@@ -1,0 +1,5 @@
+# Master key for API-key encryption. Never put the value here: SECURITY_MASTERKEY=$(openssl rand -base64 32)
+security:
+  masterKey:
+  ipHashSalt:
+  cookieSecure: false

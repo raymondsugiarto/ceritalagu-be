@@ -1,0 +1,5 @@
+# Redis for the Asynq queue. Password from env: REDIS_PASSWORD=...
+redis:
+  addr: localhost:6379
+  password:
+  db: 0

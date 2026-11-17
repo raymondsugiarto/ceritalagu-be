@@ -1,0 +1,15 @@
+# Audio storage. local = files on disk (development). s3 = private S3-compatible bucket (AWS S3, R2, MinIO).
+# Layout: users/<user_id>/songs/<song_id>/{full,preview}.mp3, guests/<guest_session_id>/songs/...,
+# playground/<id>.<format> (admin playground; shown on the landing page when featured).
+# Secrets only from env: STORAGE_S3_ACCESSKEYID, STORAGE_S3_SECRETACCESSKEY.
+storage:
+  driver: local # local | s3   (env STORAGE_DRIVER)
+  localRoot: tmp/storage
+  s3:
+    bucket:          # STORAGE_S3_BUCKET
+    region:          # STORAGE_S3_REGION (auto for Cloudflare R2)
+    endpoint:        # STORAGE_S3_ENDPOINT (empty for AWS)
+    accessKeyId:
+    secretAccessKey:
+    usePathStyle: false
+    prefix:

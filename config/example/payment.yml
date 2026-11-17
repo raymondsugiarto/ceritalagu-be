@@ -1,0 +1,11 @@
+# Unlock full song: DOKU Checkout (redirect to the DOKU payment page).
+# Payments are off until clientId + secret key are set (checkout answers 503).
+payment:
+  unlockPrice: 49000 # IDR
+  orderTTL: 60m      # DOKU payment_due_date; a pending order is reused until it expires
+  publicBaseUrl: http://localhost:3001 # customer site; DOKU sends the buyer back to /songs/<id>?order=<id>
+  doku:
+    baseUrl: https://api-sandbox.doku.com # production: https://api.doku.com
+    clientId:   # PAYMENT_DOKU_CLIENTID
+    secretKey:  # env only: PAYMENT_DOKU_SECRETKEY
+    notifyPath: /api/v1/payments/doku/notifications # must match the Notification URL in DOKU Back Office

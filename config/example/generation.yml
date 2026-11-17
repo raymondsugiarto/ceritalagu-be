@@ -1,0 +1,13 @@
+# Song generation pipeline + worker (server worker).
+generation:
+  queue: generation
+  concurrency: 4
+  taskTimeout: 15m
+  taskMaxRetry: 3
+  previewSeconds: 60
+  fadeSeconds: 3
+  guestRetention: 720h # 30 days
+  retryBaseDelay: 2s
+  ffmpegPath:
+  guestDailyQuota: 3
+  maxRegenerate: 2

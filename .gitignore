@@ -1,0 +1,11 @@
+bin/
+coverage.out
+.env
+*.local
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+tmp/
+# Per-machine overrides; config/example/ holds the tracked templates.
+config/resources/*.local.yml

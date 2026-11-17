@@ -1,0 +1,10 @@
+bin/
+.env*
+.git/
+coverage.out
+tmp/
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+config/resources/

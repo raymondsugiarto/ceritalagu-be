@@ -1,0 +1,17 @@
+# Template. Copy to config/resources/ and edit per machine.
+# Any key can be overridden by env: server.rest.port -> SERVER_REST_PORT.
+server:
+  rest:
+    name: music-api
+    env: development # development | staging | production
+    host:
+    port: 8080
+    readTimeout: 10s
+    writeTimeout: 10s
+    idleTimeout: 60s
+    shutdownTimeout: 15s
+    bodyLimitBytes: 4194304
+    corsOrigins:
+      - http://localhost:3000
+    trustedProxies: []
+    trustLoopbackProxy: true

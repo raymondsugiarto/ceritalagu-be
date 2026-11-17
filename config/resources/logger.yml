@@ -1,0 +1,4 @@
+# Local values (per machine). Template: config/example/.
+logger:
+  level: debug # debug | info | warn | error
+  format: text # json (deployed) | text (local)

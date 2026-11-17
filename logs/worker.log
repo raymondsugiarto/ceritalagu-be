@@ -1,0 +1,99 @@
+time=2026-11-15T21:23:57.249+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-15T21:23:57.250+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-15T22:04:12.554+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-15T22:04:12.556+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-15T22:04:12.686+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-15T22:04:12.686+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-15T22:04:12.695+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-15T22:04:12.695+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-15T22:04:15.546+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-15T22:04:15.563+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-15T23:12:36.799+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-15T23:12:36.801+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-15T23:12:37.176+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-15T23:12:37.176+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-15T23:12:37.182+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-15T23:12:37.182+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-15T23:12:52.467+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-15T23:12:52.467+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-16T00:02:29.581+07:00 level=INFO msg="song job completed" job_id=5d3f2e84-b226-44bd-bd14-d986aa34b0e0 song_id=a9f3f1ff-525a-4393-be2e-4a2413f2b12f total_ms=107073
+time=2026-11-16T20:35:11.971+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-16T20:35:11.973+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-16T20:35:12.489+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-16T20:35:12.489+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-16T20:35:12.496+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-16T20:35:12.496+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-16T20:35:15.089+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-16T20:35:15.090+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-16T21:24:18.985+07:00 level=INFO msg="preview cut" job_id=57de64b8-444a-41e3-9f1f-72b20c5c05b6 method=chorus_timestamps cut_sec=80.87373 duration_sec=221 words=236
+time=2026-11-16T21:24:19.890+07:00 level=WARN msg="Retry exhausted for task id=57de64b8-444a-41e3-9f1f-72b20c5c05b6" component=asynq
+time=2026-11-16T21:27:08.437+07:00 level=WARN msg="song job failed" job_id=eb86435f-a0e2-482f-9955-282bda73352f err="generate lyrics & style: minimax invalid_request: reply cut off: raise max_completion_tokens"
+time=2026-11-16T21:27:08.440+07:00 level=WARN msg="Retry exhausted for task id=eb86435f-a0e2-482f-9955-282bda73352f" component=asynq
+time=2026-11-16T21:30:25.721+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-16T21:30:25.722+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-16T21:30:25.883+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-16T21:30:25.883+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-16T21:30:25.886+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-16T21:30:25.886+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-16T21:30:30.665+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-16T21:30:30.665+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-16T21:31:43.841+07:00 level=INFO msg="song job step" job_id=966430a6-1fc8-48b3-bc88-4ae4e6d06b7c step=lyrics_style
+2026/11/16 21:32:08 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=1583 reasoning_chars=11334 prompt_tokens=613 completion_tokens=3187 reasoning_tokens=2785 input_sensitive=false output_sensitive=false
+time=2026-11-16T21:32:08.496+07:00 level=INFO msg="song job step" job_id=966430a6-1fc8-48b3-bc88-4ae4e6d06b7c step=music
+time=2026-11-16T21:33:06.927+07:00 level=INFO msg="song job step" job_id=966430a6-1fc8-48b3-bc88-4ae4e6d06b7c step=processing_audio
+time=2026-11-16T21:33:06.934+07:00 level=INFO msg="preview cut" job_id=966430a6-1fc8-48b3-bc88-4ae4e6d06b7c method=chorus_timestamps cut_sec=86.81862 duration_sec=194 words=185
+time=2026-11-16T21:33:07.802+07:00 level=INFO msg="song job completed" job_id=966430a6-1fc8-48b3-bc88-4ae4e6d06b7c song_id=2a48bfd3-ea5a-40c8-85f6-842caadb1f77 total_ms=84082
+time=2026-11-16T21:42:16.161+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-16T21:42:16.163+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-16T21:42:16.770+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-16T21:42:16.770+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-16T21:42:16.776+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-16T21:42:16.777+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-16T21:42:19.843+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-16T21:42:19.843+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-17T06:33:37.712+07:00 level=INFO msg="song job step" job_id=15af4e0c-97da-4d3d-a6f1-de5a7f3b8489 step=lyrics_style
+time=2026-11-17T06:33:46.187+07:00 level=INFO msg="song job step" job_id=49193d1c-5432-48ed-b89e-7e614031a500 step=lyrics_style
+2026/11/17 06:34:09 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=1873 reasoning_chars=10648 prompt_tokens=617 completion_tokens=3161 reasoning_tokens=2673 input_sensitive=false output_sensitive=false
+time=2026-11-17T06:34:09.565+07:00 level=INFO msg="song job step" job_id=49193d1c-5432-48ed-b89e-7e614031a500 step=music
+2026/11/17 06:34:32 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=length choices=1 content_chars=0 reasoning_chars=53047 prompt_tokens=613 completion_tokens=16384 reasoning_tokens=16384 input_sensitive=false output_sensitive=false
+2026/11/17 06:34:32 WARN minimax chat cut off with empty content, retrying with larger budget provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 retry_with=32768
+time=2026-11-17T06:34:53.280+07:00 level=INFO msg="song job step" job_id=49193d1c-5432-48ed-b89e-7e614031a500 step=processing_audio
+time=2026-11-17T06:34:54.507+07:00 level=INFO msg="preview cut" job_id=49193d1c-5432-48ed-b89e-7e614031a500 method=chorus_timestamps cut_sec=85.31492 duration_sec=235 words=215
+time=2026-11-17T06:34:55.800+07:00 level=INFO msg="song job completed" job_id=49193d1c-5432-48ed-b89e-7e614031a500 song_id=b31ee1f1-3ca3-45de-bc7e-7b21bd5cf791 total_ms=69665
+2026/11/17 06:35:08 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=32768 finish_reason=stop choices=1 content_chars=1941 reasoning_chars=17502 prompt_tokens=613 completion_tokens=4836 reasoning_tokens=4337 input_sensitive=false output_sensitive=false
+time=2026-11-17T06:35:08.213+07:00 level=INFO msg="song job step" job_id=15af4e0c-97da-4d3d-a6f1-de5a7f3b8489 step=music
+time=2026-11-17T06:35:42.113+07:00 level=INFO msg="song job step" job_id=15af4e0c-97da-4d3d-a6f1-de5a7f3b8489 step=processing_audio
+time=2026-11-17T06:35:42.643+07:00 level=INFO msg="preview cut" job_id=15af4e0c-97da-4d3d-a6f1-de5a7f3b8489 method=chorus_timestamps cut_sec=85.27762 duration_sec=233 words=225
+time=2026-11-17T06:35:43.946+07:00 level=INFO msg="song job completed" job_id=15af4e0c-97da-4d3d-a6f1-de5a7f3b8489 song_id=395f848c-7c5a-4f76-ad08-d7fca413e729 total_ms=126243
+time=2026-11-17T06:39:07.553+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-17T06:39:07.555+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-17T06:39:07.787+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-17T06:39:07.787+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-17T06:39:07.791+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-17T06:39:07.791+07:00 level=INFO msg="worker stopped cleanly"
+time=2026-11-17T06:39:14.175+07:00 level=INFO msg="Starting processing" component=asynq
+time=2026-11-17T06:39:14.176+07:00 level=INFO msg="worker started" queue=generation concurrency=4
+time=2026-11-17T06:50:34.563+07:00 level=INFO msg="song job step" job_id=3832f194-b9eb-486c-b4af-cc9da8abf680 step=lyrics_style
+2026/11/17 06:51:06 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=1583 reasoning_chars=15713 prompt_tokens=655 completion_tokens=4062 reasoning_tokens=3656 input_sensitive=false output_sensitive=false
+time=2026-11-17T06:51:06.189+07:00 level=INFO msg="song job step" job_id=3832f194-b9eb-486c-b4af-cc9da8abf680 step=music
+time=2026-11-17T06:51:49.475+07:00 level=INFO msg="song job step" job_id=3832f194-b9eb-486c-b4af-cc9da8abf680 step=processing_audio
+time=2026-11-17T06:51:49.811+07:00 level=INFO msg="preview cut" job_id=3832f194-b9eb-486c-b4af-cc9da8abf680 method=chorus_timestamps cut_sec=103.03733 duration_sec=173 words=234
+time=2026-11-17T06:51:51.041+07:00 level=INFO msg="song job completed" job_id=3832f194-b9eb-486c-b4af-cc9da8abf680 song_id=57bf8b54-d520-4ed2-a795-76c6086487e0 total_ms=76481
+time=2026-11-17T19:52:28.664+07:00 level=INFO msg="song job step" job_id=633c8ffc-8a92-4683-8f08-346b32582e1d step=lyrics_style
+2026/11/17 19:53:15 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2199 reasoning_chars=21232 prompt_tokens=658 completion_tokens=6841 reasoning_tokens=6293 input_sensitive=false output_sensitive=false
+time=2026-11-17T19:53:15.200+07:00 level=INFO msg="song job step" job_id=633c8ffc-8a92-4683-8f08-346b32582e1d step=music
+time=2026-11-17T19:53:58.596+07:00 level=INFO msg="song job step" job_id=633c8ffc-8a92-4683-8f08-346b32582e1d step=processing_audio
+time=2026-11-17T19:54:01.150+07:00 level=INFO msg="preview cut" job_id=633c8ffc-8a92-4683-8f08-346b32582e1d method=chorus_timestamps cut_sec=124.99953 duration_sec=303 words=257
+time=2026-11-17T19:54:02.512+07:00 level=INFO msg="song job completed" job_id=633c8ffc-8a92-4683-8f08-346b32582e1d song_id=fcf603fb-21fa-40c2-849c-8d935a9d5314 total_ms=93855
+time=2026-11-17T20:39:14.379+07:00 level=INFO msg="song job step" job_id=58d065e4-9c01-411e-be18-223c43786a2c step=lyrics_style
+2026/11/17 20:39:32 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2022 reasoning_chars=6020 prompt_tokens=657 completion_tokens=1906 reasoning_tokens=1394 input_sensitive=false output_sensitive=false
+time=2026-11-17T20:39:32.449+07:00 level=INFO msg="song job step" job_id=58d065e4-9c01-411e-be18-223c43786a2c step=music
+time=2026-11-17T20:40:26.198+07:00 level=INFO msg="song job step" job_id=58d065e4-9c01-411e-be18-223c43786a2c step=processing_audio
+time=2026-11-17T20:40:27.961+07:00 level=INFO msg="preview cut" job_id=58d065e4-9c01-411e-be18-223c43786a2c method=chorus_timestamps cut_sec=105.47818 duration_sec=268 words=291
+time=2026-11-17T20:40:29.598+07:00 level=INFO msg="song job completed" job_id=58d065e4-9c01-411e-be18-223c43786a2c song_id=1361f47f-081a-4a0c-a7bd-d473d2a06da0 total_ms=75222
+time=2026-11-17T22:32:02.990+07:00 level=INFO msg="song job step" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 step=lyrics_style
+2026/11/17 22:32:31 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2186 reasoning_chars=9868 prompt_tokens=655 completion_tokens=2803 reasoning_tokens=2291 input_sensitive=false output_sensitive=false
+time=2026-11-17T22:32:31.226+07:00 level=INFO msg="song job step" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 step=music
+time=2026-11-17T22:33:15.033+07:00 level=INFO msg="song job step" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 step=processing_audio
+time=2026-11-17T22:33:15.440+07:00 level=INFO msg="preview cut" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 method=chorus_timestamps cut_sec=112.037 duration_sec=262 words=331
+time=2026-11-17T22:33:16.678+07:00 level=INFO msg="song job completed" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 song_id=7aef8cca-4442-4c47-9423-e33f2868f4af total_ms=73726

@@ -1,0 +1,4 @@
+# Template. Copy to config/resources/ and edit per machine.
+logger:
+  level: debug # debug | info | warn | error
+  format: text # json (deployed) | text (local)

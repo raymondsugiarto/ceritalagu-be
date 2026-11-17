@@ -1,0 +1,45 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - errorlint       # correct use of errors.Is / errors.As
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx           # HTTP calls must carry a context
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wrapcheck
+  settings:
+    wrapcheck:
+      # errors returned from these packages are already client-safe or framework errors
+      ignore-package-globs:
+        - github.com/yourorg/music-api/internal/*
+        - github.com/yourorg/music-api/config
+        - github.com/gofiber/fiber/*
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, wrapcheck, unparam]
+      # DTO names (UserOutput, CreateUserInput) match the TypeScript types on purpose,
+      # so user.UserOutput "stuttering" is expected.
+      - linters: [revive]
+        text: "that stutters"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/yourorg/music-api

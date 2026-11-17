@@ -1,0 +1,3 @@
+-- Phone number the guest gives on the last questionnaire step (with their email). That step creates
+-- the user, and the user id becomes the storage folder: users/<user_id>/songs/<song_id>/...
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS phone VARCHAR(30);

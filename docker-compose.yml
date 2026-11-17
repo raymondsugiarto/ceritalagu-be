@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: music
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DATABASE_MAIN_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d music"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - music-dev
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - music-dev
+
+  api:
+    build:
+      context: .
+    env_file: .env
+    environment: &backend-environment
+      CONFIG_PATH: /config/resources
+      SERVER_REST_HOST: 0.0.0.0
+      SERVER_REST_PORT: 8080
+      DATABASE_MAIN_HOST: postgres
+      DATABASE_MAIN_PORT: 5432
+      DATABASE_MAIN_USER: postgres
+      DATABASE_MAIN_PASSWORD: ${DATABASE_MAIN_PASSWORD:-postgres}
+      DATABASE_MAIN_NAME: music
+      REDIS_ADDR: redis:6379
+      STORAGE_LOCALROOT: /data/storage
+      SECURITY_MASTERKEY: ${SECURITY_MASTERKEY:?Set SECURITY_MASTERKEY in .env}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - song-storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - music-dev
+
+  worker:
+    build:
+      context: .
+    command: ["worker"]
+    env_file: .env
+    environment: *backend-environment
+    volumes:
+      - song-storage:/data/storage
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - music-dev
+
+volumes:
+  postgres-data:
+  redis-data:
+  song-storage:
+
+networks:
+  music-dev:
+    name: music-dev

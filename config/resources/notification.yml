@@ -1,0 +1,7 @@
+# "Your song is ready" email, sent by the worker right after a song is generated.
+# The attached file is the 60 s preview, or the full song when attachFullAudio is on.
+notification:
+  enabled: false              # NOTIFICATION_ENABLED
+  attachFullAudio: false      # NOTIFICATION_ATTACHFULLAUDIO
+  maxAttachmentMB: 3          # NOTIFICATION_MAXATTACHMENTMB (raw bytes; the base64 payload is ~33% larger)
+  siteUrl:                    # NOTIFICATION_SITEURL (link to the song page in the email)

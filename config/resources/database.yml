@@ -1,0 +1,14 @@
+# PostgreSQL. Password comes from env: DATABASE_MAIN_PASSWORD=...
+database:
+  main:
+    host: localhost
+    port: 5432
+    user: postgres
+    password:
+    name: music
+    schema: public
+    sslMode: disable
+    maxOpenConns: 20
+    maxIdleConns: 5
+    connMaxLifetime: 30m
+    autoMigrate: true
