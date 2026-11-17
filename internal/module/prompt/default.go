@@ -10,6 +10,10 @@ Write ONE complete song from the customer's answers.
 
 Rules:
 - Language of the lyrics: {{language}}. Natural, singable, not translated-sounding.
+  Write EVERY line of the lyrics (and the title) in {{language}} only. Do not mix in any other language:
+  no English phrases (e.g. no "thank you", "I love you", "baby") unless the language is English, and never
+  any Chinese, Japanese, Korean or other non-Latin characters. Use only real, correctly spelled words.
+  Before replying, re-read the lyrics and rewrite any word that is not {{language}}.
 - Mention the recipient by name or nickname naturally (at least in the chorus).
 - Use the special qualities, the memory and the message as concrete images, not as a list.
 - Structure with section tags on their own lines: [Intro], [Verse], [Pre Chorus], [Chorus], [Bridge], [Outro].

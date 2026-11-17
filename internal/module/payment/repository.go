@@ -12,6 +12,12 @@ import (
 // ErrNotFound is returned when no live order matches.
 var ErrNotFound = errors.New("payment order not found")
 
+// Voucher limits hit by CreateWithVoucher.
+var (
+	ErrVoucherExhausted = errors.New("voucher quota exhausted")
+	ErrVoucherUsed      = errors.New("voucher already used by this user")
+)
+
 type model struct {
 	ID                  string         `gorm:"column:id;primaryKey"`
 	InvoiceNumber       string         `gorm:"column:invoice_number"`
@@ -20,6 +26,11 @@ type model struct {
 	GuestSessionID      string         `gorm:"column:guest_session_id"`
 	Gateway             string         `gorm:"column:gateway"`
 	Amount              int64          `gorm:"column:amount"`
+	NormalPrice         int64          `gorm:"column:normal_price"`
+	SalePrice           int64          `gorm:"column:sale_price"`
+	VoucherID           *string        `gorm:"column:voucher_id"`
+	VoucherCode         string         `gorm:"column:voucher_code"`
+	VoucherDiscount     int64          `gorm:"column:voucher_discount"`
 	Currency            string         `gorm:"column:currency"`
 	Status              string         `gorm:"column:status"`
 	PaymentURL          string         `gorm:"column:payment_url"`
@@ -133,7 +144,9 @@ func (r *GormRepository) first(ctx context.Context, where string, arg any) (Orde
 func fromOrder(o Order) *model {
 	return &model{
 		ID: o.ID, InvoiceNumber: o.InvoiceNumber, UserID: o.UserID, SongID: o.SongID, GuestSessionID: o.GuestSessionID,
-		Gateway: o.Gateway, Amount: o.Amount, Currency: o.Currency, Status: string(o.Status), PaymentURL: o.PaymentURL,
+		Gateway: o.Gateway, Amount: o.Amount, NormalPrice: o.NormalPrice, SalePrice: o.SalePrice,
+		VoucherID: nullable(o.VoucherID), VoucherCode: o.VoucherCode, VoucherDiscount: o.VoucherDiscount,
+		Currency: o.Currency, Status: string(o.Status), PaymentURL: o.PaymentURL,
 		PaymentMethod: o.PaymentMethod, GatewayRequestID: o.GatewayRequestID, GatewayResponse: o.GatewayResponse,
 		NotificationPayload: o.NotificationPayload, ExpiresAt: o.ExpiresAt, PaidAt: o.PaidAt,
 		CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
@@ -143,11 +156,76 @@ func fromOrder(o Order) *model {
 func (m model) toOrder() Order {
 	return Order{
 		ID: m.ID, InvoiceNumber: m.InvoiceNumber, UserID: m.UserID, SongID: m.SongID, GuestSessionID: m.GuestSessionID,
-		Gateway: m.Gateway, Amount: m.Amount, Currency: m.Currency, Status: Status(m.Status), PaymentURL: m.PaymentURL,
+		Gateway: m.Gateway, Amount: m.Amount, NormalPrice: m.NormalPrice, SalePrice: m.SalePrice,
+		VoucherID: deref(m.VoucherID), VoucherCode: m.VoucherCode, VoucherDiscount: m.VoucherDiscount,
+		Currency: m.Currency, Status: Status(m.Status), PaymentURL: m.PaymentURL,
 		PaymentMethod: m.PaymentMethod, GatewayRequestID: m.GatewayRequestID, GatewayResponse: m.GatewayResponse,
 		NotificationPayload: m.NotificationPayload, ExpiresAt: m.ExpiresAt, PaidAt: m.PaidAt,
 		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
+}
+
+// CreateWithVoucher inserts o, which uses voucher o.VoucherID, inside one transaction that locks the
+// voucher row, so concurrent checkouts cannot take more than quota. Live uses are paid orders and
+// pending orders still inside their payment window. A user may hold one live use of each voucher.
+func (r *GormRepository) CreateWithVoucher(ctx context.Context, o Order, quota int, now time.Time) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var locked string
+		if err := tx.Raw("SELECT id FROM voucher WHERE id = ? AND deleted_at IS NULL FOR UPDATE", o.VoucherID).
+			Scan(&locked).Error; err != nil {
+			return fmt.Errorf("lock voucher %s: %w", o.VoucherID, err)
+		}
+		if locked == "" {
+			return ErrVoucherExhausted
+		}
+		total, byUser, err := voucherUsage(tx, o.VoucherID, o.UserID, now)
+		if err != nil {
+			return err
+		}
+		if byUser > 0 {
+			return ErrVoucherUsed
+		}
+		if total >= int64(quota) {
+			return ErrVoucherExhausted
+		}
+		if err := tx.Create(fromOrder(o)).Error; err != nil {
+			return fmt.Errorf("insert payment_order: %w", err)
+		}
+		return nil
+	})
+}
+
+// VoucherUsage counts the live uses of a voucher: in total and by userID.
+func (r *GormRepository) VoucherUsage(ctx context.Context, voucherID, userID string, now time.Time) (int64, int64, error) {
+	return voucherUsage(r.db.WithContext(ctx), voucherID, userID, now)
+}
+
+func voucherUsage(db *gorm.DB, voucherID, userID string, now time.Time) (total, byUser int64, err error) {
+	row := struct {
+		Total  int64
+		ByUser int64
+	}{}
+	err = db.Raw(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE user_id = ?) AS by_user FROM payment_order
+		WHERE voucher_id = ? AND deleted_at IS NULL AND (status = ? OR (status = ? AND expires_at > ?))`,
+		userID, voucherID, string(StatusPaid), string(StatusPending), now).Scan(&row).Error
+	if err != nil {
+		return 0, 0, fmt.Errorf("count voucher %s usage: %w", voucherID, err)
+	}
+	return row.Total, row.ByUser, nil
+}
+
+func nullable(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 var _ Repository = (*GormRepository)(nil)

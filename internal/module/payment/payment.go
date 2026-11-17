@@ -27,7 +27,12 @@ type Order struct {
 	SongID              string
 	GuestSessionID      string
 	Gateway             string
-	Amount              int64 // whole IDR
+	Amount              int64 // whole IDR actually charged: SalePrice - VoucherDiscount
+	NormalPrice         int64 // shown struck through at checkout
+	SalePrice           int64
+	VoucherID           string
+	VoucherCode         string
+	VoucherDiscount     int64
 	Currency            string
 	Status              Status
 	PaymentURL          string

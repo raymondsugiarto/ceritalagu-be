@@ -34,6 +34,7 @@ import (
 	"github.com/yourorg/music-api/internal/module/payment"
 	"github.com/yourorg/music-api/internal/module/payment/doku"
 	"github.com/yourorg/music-api/internal/module/playground"
+	"github.com/yourorg/music-api/internal/module/pricing"
 	"github.com/yourorg/music-api/internal/module/prompt"
 	"github.com/yourorg/music-api/internal/module/questionnaire"
 	"github.com/yourorg/music-api/internal/module/song"
@@ -135,8 +136,11 @@ func serve(ctx context.Context) error {
 		gateway = doku.New(d.BaseURL, d.ClientID, d.SecretKey)
 	}
 	log.Info("payment", "gateway", "doku", "enabled", gateway != nil, "base_url", cfg.Payment.Doku.BaseURL)
-	paymentSvc := payment.NewService(payment.NewGormRepository(gdb), songSvc, userRepo, gateway, payment.Settings{
-		UnlockPrice: cfg.Payment.UnlockPrice, OrderTTL: cfg.Payment.OrderTTL,
+	// Prices are edited by admins (setting song_pricing); payment.unlockPrice is the default until then.
+	pricingSvc := pricing.NewService(pricing.NewGormRepository(gdb), audit.NewGormRecorder(gdb),
+		pricing.Prices{Normal: cfg.Payment.UnlockPrice, Sale: cfg.Payment.UnlockPrice, MinPayable: pricing.DefaultMinPayable})
+	paymentSvc := payment.NewService(payment.NewGormRepository(gdb), songSvc, userRepo, pricingSvc, gateway, payment.Settings{
+		OrderTTL:      cfg.Payment.OrderTTL,
 		PublicBaseURL: cfg.Payment.PublicBaseURL, NotifyPath: cfg.Payment.Doku.NotifyPath,
 	}, log)
 
@@ -152,6 +156,7 @@ func serve(ctx context.Context) error {
 		admin.NewHandler(adminSvc, guard, cfg.Security.CookieSecure),
 		aiprovider.NewHandler(providerSvc, guard.Require(admin.RoleSuperAdmin), adminID),
 		masterdata.NewHandler(masterSvc, guard.Require(admin.RoleSuperAdmin), adminID),
+		pricing.NewHandler(pricingSvc, guard.Require(admin.RoleSuperAdmin), adminID),
 		prompt.NewHandler(promptSvc, guard.Require(admin.RoleSuperAdmin), adminID),
 		playground.NewHandler(playgroundSvc, guard.Require(admin.RoleSuperAdmin)),
 	)

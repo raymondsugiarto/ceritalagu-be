@@ -175,7 +175,11 @@ func (p *Pipeline) lyricsStyle(ctx context.Context, job *song.Job, a questionnai
 	err = p.retry(ctx, prov.Config.MaxRetries, "lyrics_style", func() error {
 		var callErr error
 		res, callErr = adapter.GenerateLyricsStyle(ctx, aiprovider.LyricsStyleRequest{SystemPrompt: system, UserPrompt: user}, prov.Config)
-		return callErr
+		if callErr != nil {
+			return callErr
+		}
+		// The model sometimes drifts into another language or script mid-song; reject and retry.
+		return aiprovider.CheckLyricsLanguage(string(prov.AdapterType), res.Lyrics, lyricsLang(a.Language))
 	})
 	if err != nil {
 		return aiprovider.LyricsStyleResult{}, fmt.Errorf("generate lyrics & style: %w", err)
@@ -294,6 +298,15 @@ func (p *Pipeline) retry(ctx context.Context, maxRetries int, step string, fn fu
 		}
 		delay *= 2
 	}
+}
+
+// lyricsLang maps the customer's language to the code CheckLyricsLanguage expects (Indonesian by default,
+// matching the prompt).
+func lyricsLang(l questionnaire.Language) string {
+	if l == questionnaire.LanguageEN {
+		return "en"
+	}
+	return "id"
 }
 
 // applyVoice enforces the customer's voice choice; "surprise" keeps the AI's pick.

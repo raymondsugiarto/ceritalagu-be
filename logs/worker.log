@@ -97,3 +97,27 @@ time=2026-11-17T22:32:31.226+07:00 level=INFO msg="song job step" job_id=b6f4588
 time=2026-11-17T22:33:15.033+07:00 level=INFO msg="song job step" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 step=processing_audio
 time=2026-11-17T22:33:15.440+07:00 level=INFO msg="preview cut" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 method=chorus_timestamps cut_sec=112.037 duration_sec=262 words=331
 time=2026-11-17T22:33:16.678+07:00 level=INFO msg="song job completed" job_id=b6f4588c-dc87-47ae-8f59-f92e2b18f641 song_id=7aef8cca-4442-4c47-9423-e33f2868f4af total_ms=73726
+time=2026-11-17T22:54:12.644+07:00 level=INFO msg="song job step" job_id=95222134-6605-4839-92b0-cb2e9c3def69 step=lyrics_style
+2026/11/17 22:54:31 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=945 reasoning_chars=4240 prompt_tokens=613 completion_tokens=1265 reasoning_tokens=1011 input_sensitive=false output_sensitive=false
+time=2026-11-17T22:54:31.235+07:00 level=INFO msg="song job step" job_id=95222134-6605-4839-92b0-cb2e9c3def69 step=music
+time=2026-11-17T22:55:14.698+07:00 level=INFO msg="song job step" job_id=95222134-6605-4839-92b0-cb2e9c3def69 step=processing_audio
+time=2026-11-17T22:55:15.089+07:00 level=INFO msg="preview cut" job_id=95222134-6605-4839-92b0-cb2e9c3def69 method=chorus_timestamps cut_sec=114 duration_sec=152 words=88
+time=2026-11-17T22:55:16.455+07:00 level=INFO msg="song job completed" job_id=95222134-6605-4839-92b0-cb2e9c3def69 song_id=ff6850b0-fa94-4e26-93cd-beb7a6a1551b total_ms=63816
+time=2026-11-17T22:59:32.894+07:00 level=INFO msg="song job step" job_id=6b895f9f-d1f4-4b70-aaf5-6f3f2436e993 step=lyrics_style
+2026/11/17 23:00:57 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2195 reasoning_chars=23948 prompt_tokens=613 completion_tokens=7060 reasoning_tokens=6487 input_sensitive=false output_sensitive=false
+time=2026-11-17T23:00:57.983+07:00 level=INFO msg="song job step" job_id=6b895f9f-d1f4-4b70-aaf5-6f3f2436e993 step=music
+time=2026-11-17T23:02:02.097+07:00 level=INFO msg="song job step" job_id=6b895f9f-d1f4-4b70-aaf5-6f3f2436e993 step=processing_audio
+time=2026-11-17T23:02:03.088+07:00 level=INFO msg="preview cut" job_id=6b895f9f-d1f4-4b70-aaf5-6f3f2436e993 method=chorus_timestamps cut_sec=131.996 duration_sec=314 words=263
+time=2026-11-17T23:02:04.735+07:00 level=INFO msg="song job completed" job_id=6b895f9f-d1f4-4b70-aaf5-6f3f2436e993 song_id=a62d4d4d-24e1-4d3c-90a6-c4f532b86429 total_ms=151866
+time=2026-11-17T23:06:16.070+07:00 level=INFO msg="song job step" job_id=6b69ea69-f5db-4722-8632-77df6fdcfec5 step=lyrics_style
+2026/11/17 23:07:14 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2073 reasoning_chars=19693 prompt_tokens=615 completion_tokens=5715 reasoning_tokens=5164 input_sensitive=false output_sensitive=false
+time=2026-11-17T23:07:14.915+07:00 level=INFO msg="song job step" job_id=6b69ea69-f5db-4722-8632-77df6fdcfec5 step=music
+time=2026-11-17T23:08:19.477+07:00 level=INFO msg="song job step" job_id=6b69ea69-f5db-4722-8632-77df6fdcfec5 step=processing_audio
+time=2026-11-17T23:08:20.093+07:00 level=INFO msg="preview cut" job_id=6b69ea69-f5db-4722-8632-77df6fdcfec5 method=chorus_timestamps cut_sec=149.6715 duration_sec=342 words=255
+time=2026-11-17T23:08:21.673+07:00 level=INFO msg="song job completed" job_id=6b69ea69-f5db-4722-8632-77df6fdcfec5 song_id=d8dbe17c-46b5-4a21-8475-36f8bce01216 total_ms=125611
+time=2026-11-17T23:16:16.801+07:00 level=INFO msg="song job step" job_id=22ee4ffe-8147-47b2-af67-628aff8332af step=lyrics_style
+2026/11/17 23:17:23 INFO minimax chat result provider=minimax model=MiniMax-M3.1-Flash max_completion_tokens=16384 finish_reason=stop choices=1 content_chars=2012 reasoning_chars=16136 prompt_tokens=632 completion_tokens=4669 reasoning_tokens=4145 input_sensitive=false output_sensitive=false
+time=2026-11-17T23:17:23.160+07:00 level=INFO msg="song job step" job_id=22ee4ffe-8147-47b2-af67-628aff8332af step=music
+time=2026-11-17T23:18:27.248+07:00 level=INFO msg="song job step" job_id=22ee4ffe-8147-47b2-af67-628aff8332af step=processing_audio
+time=2026-11-17T23:18:27.666+07:00 level=INFO msg="preview cut" job_id=22ee4ffe-8147-47b2-af67-628aff8332af method=chorus_timestamps cut_sec=146.93543 duration_sec=337 words=255
+time=2026-11-17T23:18:29.415+07:00 level=INFO msg="song job completed" job_id=22ee4ffe-8147-47b2-af67-628aff8332af song_id=b1fe4488-92d9-4549-8970-68d523be6656 total_ms=132621

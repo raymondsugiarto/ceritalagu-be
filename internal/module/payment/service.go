@@ -17,6 +17,7 @@ import (
 	"github.com/yourorg/music-api/internal/apperror"
 	"github.com/yourorg/music-api/internal/module/guest"
 	"github.com/yourorg/music-api/internal/module/payment/doku"
+	"github.com/yourorg/music-api/internal/module/pricing"
 	"github.com/yourorg/music-api/internal/module/song"
 	"github.com/yourorg/music-api/internal/module/user"
 )
@@ -31,6 +32,14 @@ type Repository interface {
 	OpenForSong(ctx context.Context, songID string, now time.Time) (Order, error)
 	MarkPaid(ctx context.Context, id, method string, payload map[string]any, at time.Time) (bool, error)
 	CountPaid(ctx context.Context, userID string) (int64, error)
+	CreateWithVoucher(ctx context.Context, o Order, quota int, now time.Time) error
+	VoucherUsage(ctx context.Context, voucherID, userID string, now time.Time) (total, byUser int64, err error)
+}
+
+// Pricing gives the current prices and checks voucher codes (pricing.Service).
+type Pricing interface {
+	Prices(ctx context.Context) (pricing.Prices, error)
+	UsableVoucher(ctx context.Context, code string, now time.Time) (pricing.Voucher, error)
 }
 
 // Songs reads and unlocks songs (song.Service).
@@ -52,9 +61,8 @@ type Gateway interface {
 	VerifyNotification(h http.Header, target string, body []byte) bool
 }
 
-// Settings are the payment rules from payment.yml.
+// Settings are the payment rules from payment.yml. Prices come from Pricing.
 type Settings struct {
-	UnlockPrice   int64
 	OrderTTL      time.Duration
 	PublicBaseURL string // customer site; DOKU returns the buyer to <it>/songs/<song_id>?order=<id>
 	NotifyPath    string // signed path of the DOKU Notification URL
@@ -65,6 +73,7 @@ type Service struct {
 	repo    Repository
 	songs   Songs
 	users   Users
+	pricing Pricing
 	gateway Gateway
 	cfg     Settings
 	log     *slog.Logger
@@ -72,47 +81,144 @@ type Service struct {
 }
 
 // NewService builds the service. gateway may be nil: checkout then answers 503.
-func NewService(repo Repository, songs Songs, users Users, gateway Gateway, cfg Settings, log *slog.Logger) *Service {
-	return &Service{repo: repo, songs: songs, users: users, gateway: gateway, cfg: cfg, log: log,
+func NewService(repo Repository, songs Songs, users Users, prices Pricing, gateway Gateway, cfg Settings, log *slog.Logger) *Service {
+	return &Service{repo: repo, songs: songs, users: users, pricing: prices, gateway: gateway, cfg: cfg, log: log,
 		now: func() time.Time { return time.Now().UTC() }}
 }
 
 var errDisabled = apperror.Unavailable("Pembayaran belum tersedia. Silakan coba lagi nanti.", errors.New("payment gateway not configured"))
 
-// Pricing is shown next to the unlock button.
-func (s *Service) Pricing() PricingOutput {
-	return PricingOutput{UnlockPrice: s.cfg.UnlockPrice, Currency: "IDR", Enabled: s.gateway != nil}
+// Pricing is shown next to the unlock button: normal price struck through, sale price below.
+func (s *Service) Pricing(ctx context.Context) (PricingOutput, error) {
+	p, err := s.pricing.Prices(ctx)
+	if err != nil {
+		return PricingOutput{}, err
+	}
+	return PricingOutput{UnlockPrice: p.Sale, NormalPrice: p.Normal, SalePrice: p.Sale, Currency: "IDR",
+		Enabled: s.gateway != nil}, nil
 }
 
-// Checkout opens (or reuses) a DOKU payment page for the visitor's song.
-func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID string) (CheckoutOutput, error) {
-	if s.gateway == nil {
-		return CheckoutOutput{}, errDisabled
+// quote is what a checkout of the visitor's song would charge.
+type quote struct {
+	song     song.Song
+	buyer    user.User
+	prices   pricing.Prices
+	voucher  *pricing.Voucher
+	discount int64
+	total    int64
+}
+
+// Quote checks voucherCode against the visitor's song without creating an order.
+func (s *Service) Quote(ctx context.Context, v guest.Visitor, songID, voucherCode string) (QuoteOutput, error) {
+	now := s.now()
+	q, err := s.quote(ctx, v, songID, voucherCode, now)
+	if err != nil {
+		return QuoteOutput{}, err
 	}
+	if q.voucher != nil {
+		var held int64
+		if open, err := s.repo.OpenForSong(ctx, q.song.ID, now); err == nil && open.VoucherID == q.voucher.ID {
+			held = 1 // their own pending order for this song already holds it
+		}
+		if err := s.checkVoucherLimits(ctx, q, held, now); err != nil {
+			return QuoteOutput{}, err
+		}
+	}
+	return toQuoteOutput(q), nil
+}
+
+func (s *Service) quote(ctx context.Context, v guest.Visitor, songID, voucherCode string, now time.Time) (quote, error) {
 	sg, err := s.songs.Owned(ctx, v, songID)
 	if err != nil {
-		return CheckoutOutput{}, err
+		return quote{}, err
 	}
 	if sg.IsUnlocked {
-		return CheckoutOutput{}, apperror.Conflict("Lagu ini sudah terbuka penuh.")
+		return quote{}, apperror.Conflict("Lagu ini sudah terbuka penuh.")
 	}
 	if sg.OwnerUserID == "" {
-		return CheckoutOutput{}, apperror.Conflict("Isi email dan nomor HP dulu sebelum membeli lagu.")
+		return quote{}, apperror.Conflict("Isi email dan nomor HP dulu sebelum membeli lagu.")
 	}
 	buyer, err := s.users.GetByID(ctx, sg.OwnerUserID)
 	if err != nil {
-		return CheckoutOutput{}, apperror.Internal(err)
+		return quote{}, apperror.Internal(err)
 	}
 	if buyer.Status == user.StatusSuspended {
-		return CheckoutOutput{}, apperror.Forbidden("Akun ini dinonaktifkan.")
+		return quote{}, apperror.Forbidden("Akun ini dinonaktifkan.")
+	}
+	p, err := s.pricing.Prices(ctx)
+	if err != nil {
+		return quote{}, err
+	}
+	q := quote{song: sg, buyer: buyer, prices: p}
+	if strings.TrimSpace(voucherCode) != "" {
+		vc, err := s.pricing.UsableVoucher(ctx, voucherCode, now)
+		if err != nil {
+			return quote{}, err
+		}
+		q.voucher = &vc
+	}
+	q.discount, q.total = pricing.Quote(p, q.voucher)
+	return q, nil
+}
+
+// checkVoucherLimits reports quota and per-user limits without locking (the final check is in
+// Repository.CreateWithVoucher). held is 1 when an open order of this song already uses the voucher
+// and will be replaced: that use does not count.
+func (s *Service) checkVoucherLimits(ctx context.Context, q quote, held int64, now time.Time) error {
+	total, byUser, err := s.repo.VoucherUsage(ctx, q.voucher.ID, q.buyer.ID, now)
+	if err != nil {
+		return apperror.Internal(err)
+	}
+	return voucherLimitErr(byUser-held > 0, total-held >= int64(q.voucher.Quota))
+}
+
+func voucherLimitErr(used, exhausted bool) error {
+	switch {
+	case used:
+		return apperror.Conflict("Voucher ini sudah kamu pakai.")
+	case exhausted:
+		return apperror.Conflict("Kuota voucher ini sudah habis.")
+	}
+	return nil
+}
+
+// Checkout opens (or reuses) a DOKU payment page for the visitor's song, with an optional voucher.
+func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID, voucherCode string) (CheckoutOutput, error) {
+	if s.gateway == nil {
+		return CheckoutOutput{}, errDisabled
 	}
 	now := s.now()
+	q, err := s.quote(ctx, v, songID, voucherCode, now)
+	if err != nil {
+		return CheckoutOutput{}, err
+	}
+	sg, buyer := q.song, q.buyer
 
-	// A pending order still inside its payment window is reused: the customer gets the same DOKU page.
+	// A pending order still inside its payment window is reused when it charges the same: the customer
+	// gets the same DOKU page. One with another voucher or an old price is closed and replaced.
+	var reusable *Order
 	if open, err := s.repo.OpenForSong(ctx, sg.ID, now); err == nil {
-		return toCheckoutOutput(open), nil
+		if open.Amount == q.total && open.VoucherCode == voucherCodeOf(q) {
+			return toCheckoutOutput(open), nil
+		}
+		reusable = &open
 	} else if !errors.Is(err, ErrNotFound) {
 		return CheckoutOutput{}, apperror.Internal(err)
+	}
+	if q.voucher != nil {
+		var held int64
+		if reusable != nil && reusable.VoucherID == q.voucher.ID {
+			held = 1 // same voucher at an old price: replacing the order frees its use
+		}
+		if err := s.checkVoucherLimits(ctx, q, held, now); err != nil {
+			return CheckoutOutput{}, err
+		}
+	}
+	if reusable != nil {
+		reusable.Status, reusable.UpdatedAt = StatusExpired, now
+		if err := s.repo.Update(ctx, *reusable); err != nil {
+			return CheckoutOutput{}, apperror.Internal(err)
+		}
 	}
 
 	invoice, err := s.newInvoice(ctx, now)
@@ -122,10 +228,20 @@ func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID string) 
 	expires := now.Add(s.cfg.OrderTTL)
 	o := Order{
 		ID: uuid.NewString(), InvoiceNumber: invoice, UserID: buyer.ID, SongID: sg.ID, GuestSessionID: v.SessionID,
-		Gateway: GatewayDoku, Amount: s.cfg.UnlockPrice, Currency: "IDR", Status: StatusPending,
+		Gateway: GatewayDoku, Amount: q.total, NormalPrice: q.prices.Normal, SalePrice: q.prices.Sale,
+		VoucherDiscount: q.discount, Currency: "IDR", Status: StatusPending,
 		ExpiresAt: &expires, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := s.repo.Create(ctx, o); err != nil {
+	if q.voucher != nil {
+		o.VoucherID, o.VoucherCode = q.voucher.ID, q.voucher.Code
+		err = s.repo.CreateWithVoucher(ctx, o, q.voucher.Quota, now)
+		if lim := voucherLimitErr(errors.Is(err, ErrVoucherUsed), errors.Is(err, ErrVoucherExhausted)); lim != nil {
+			return CheckoutOutput{}, lim
+		}
+	} else {
+		err = s.repo.Create(ctx, o)
+	}
+	if err != nil {
 		return CheckoutOutput{}, apperror.Internal(err)
 	}
 	// Starting a checkout is strong buying intent.
@@ -133,9 +249,13 @@ func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID string) 
 		s.log.Warn("promote buyer to prospect", "user_id", buyer.ID, "err", err)
 	}
 
+	item := "Full lagu: " + sg.Title
+	if o.VoucherCode != "" {
+		item += " (voucher " + o.VoucherCode + ")"
+	}
 	res, err := s.gateway.CreateCheckout(ctx, doku.CheckoutRequest{
 		InvoiceNumber: invoice, Amount: o.Amount, DueMinutes: max(int(s.cfg.OrderTTL.Minutes()), 1),
-		CallbackURL: s.returnURL(sg.ID, o.ID), ItemName: "Full lagu: " + sg.Title,
+		CallbackURL: s.returnURL(sg.ID, o.ID), ItemName: item,
 		CustomerID: buyer.ID, CustomerName: displayName(buyer), CustomerEmail: buyer.Email, CustomerPhone: buyer.Phone,
 	})
 	if err != nil {
@@ -151,6 +271,13 @@ func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID string) 
 		return CheckoutOutput{}, apperror.Internal(err)
 	}
 	return toCheckoutOutput(o), nil
+}
+
+func voucherCodeOf(q quote) string {
+	if q.voucher == nil {
+		return ""
+	}
+	return q.voucher.Code
 }
 
 // GetOrder returns the visitor's order. A pending order is checked with DOKU first, so the result page
