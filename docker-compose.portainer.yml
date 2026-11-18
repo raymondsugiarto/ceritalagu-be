@@ -1,6 +1,8 @@
 version: "3.7"
 services:
   music-api:
+    container_name: music-api
+    hostname: music-api
     image: ghcr.io/${IMAGE_OWNER:-raymondsugiarto}/music-api:latest
     environment: &backend-environment
       CONFIG_PATH: /config/resources
@@ -67,15 +69,15 @@ services:
     command: ["worker"]
     environment: *backend-environment
     volumes:
-      - song-storage:/data/storage
+      - ${STORAGE_DIR:-./song/storage}:/data/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - music-api
     restart: unless-stopped
-
-volumes:
-  postgres-data:
-  redis-data:
-  song-storage:
+    networks:
+      - default
+      - platform
 
 networks:
   platform:

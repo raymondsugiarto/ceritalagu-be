@@ -12,6 +12,6 @@ server:
     shutdownTimeout: 15s
     bodyLimitBytes: 4194304
     corsOrigins:
-      - http://localhost:3000
+      - http://localhost:8020
     trustedProxies: []
     trustLoopbackProxy: true
