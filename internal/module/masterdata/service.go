@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yourorg/music-api/internal/apperror"
+	"github.com/yourorg/music-api/internal/i18n"
 	"github.com/yourorg/music-api/internal/module/audit"
 )
 
@@ -24,6 +25,9 @@ type Store interface {
 	Create(ctx context.Context, it Item) (Item, error)
 	Update(ctx context.Context, it Item) (Item, error)
 	Archive(ctx context.Context, k Kind, id string) error
+	Translations(ctx context.Context, k Kind) (map[string]map[i18n.Locale]Text, error)
+	SetTranslation(ctx context.Context, k Kind, entityID string, l i18n.Locale, field, value string) error
+	ArchiveTranslations(ctx context.Context, k Kind, entityID string) error
 }
 
 // Auditor records back-office changes (audit.GormRecorder).
@@ -40,15 +44,23 @@ type Service struct {
 // NewService builds the service.
 func NewService(store Store, auditor Auditor) *Service { return &Service{store: store, audit: auditor} }
 
-// QuestionnaireOptions returns the active options of every step, in admin sort order.
+// QuestionnaireOptions returns the active options of every step, in admin sort order, with names
+// and descriptions in the request locale (i18n.FromContext; fallback locale → id → code).
+// Two queries per kind (rows + translations), whatever the number of options.
 func (s *Service) QuestionnaireOptions(ctx context.Context) (QuestionnaireOptionsOutput, error) {
+	l := i18n.FromContext(ctx)
 	lists := make(map[Kind][]OptionOutput, len(Kinds))
 	for _, k := range Kinds {
 		items, err := s.store.List(ctx, k, true)
 		if err != nil {
 			return QuestionnaireOptionsOutput{}, apperror.Internal(err)
 		}
-		lists[k] = toOptions(items)
+		if l != i18n.Default {
+			if err := s.attachTranslations(ctx, k, items); err != nil {
+				return QuestionnaireOptionsOutput{}, err
+			}
+		}
+		lists[k] = toOptions(items, l)
 	}
 	return QuestionnaireOptionsOutput{
 		RecipientTypes: lists[KindRecipientType], Occasions: lists[KindOccasion], Genres: lists[KindGenre],
@@ -77,6 +89,9 @@ func (s *Service) List(ctx context.Context, k Kind) ([]ItemOutput, error) {
 	items, err := s.store.List(ctx, k, false)
 	if err != nil {
 		return nil, apperror.Internal(err)
+	}
+	if err := s.attachTranslations(ctx, k, items); err != nil {
+		return nil, err
 	}
 	out := make([]ItemOutput, len(items))
 	for i, it := range items {
@@ -110,11 +125,18 @@ func (s *Service) Create(ctx context.Context, actorID string, k Kind, in CreateI
 	if it.Name == "" {
 		return ItemOutput{}, fieldErr("name", "is required")
 	}
+	if err := checkTranslations(in.Translations); err != nil {
+		return ItemOutput{}, err
+	}
 	it, err := s.store.Create(ctx, it)
 	if err != nil {
 		return ItemOutput{}, apperror.Internal(err)
 	}
-	s.record(ctx, actorID, k, "create", it.ID, map[string]any{"code": it.Code, "name": it.Name})
+	diff := map[string]any{"code": it.Code, "name": it.Name}
+	if err := s.applyTranslations(ctx, &it, in.Translations, diff); err != nil {
+		return ItemOutput{}, err
+	}
+	s.record(ctx, actorID, k, "create", it.ID, diff)
 	return toItemOutput(it), nil
 }
 
@@ -124,6 +146,14 @@ func (s *Service) Update(ctx context.Context, actorID string, k Kind, id string,
 	if err != nil {
 		return ItemOutput{}, err
 	}
+	if err := checkTranslations(in.Translations); err != nil {
+		return ItemOutput{}, err
+	}
+	one := []Item{it}
+	if err := s.attachTranslations(ctx, k, one); err != nil {
+		return ItemOutput{}, err
+	}
+	it = one[0]
 	changed := map[string]any{}
 	setStr := func(field string, dst *string, v *string) {
 		if v != nil && strings.TrimSpace(*v) != *dst {
@@ -146,11 +176,17 @@ func (s *Service) Update(ctx context.Context, actorID string, k Kind, id string,
 	if in.IsActive != nil && *in.IsActive != it.IsActive {
 		it.IsActive, changed["is_active"] = *in.IsActive, *in.IsActive
 	}
+	baseChanged := len(changed) > 0
+	if baseChanged {
+		if it, err = s.store.Update(ctx, it); err != nil {
+			return ItemOutput{}, mapErr(err)
+		}
+	}
+	if err := s.applyTranslations(ctx, &it, in.Translations, changed); err != nil {
+		return ItemOutput{}, err
+	}
 	if len(changed) == 0 {
 		return toItemOutput(it), nil
-	}
-	if it, err = s.store.Update(ctx, it); err != nil {
-		return ItemOutput{}, mapErr(err)
 	}
 	s.record(ctx, actorID, k, "update", it.ID, changed)
 	return toItemOutput(it), nil
@@ -163,6 +199,10 @@ func (s *Service) Archive(ctx context.Context, actorID string, k Kind, id string
 	}
 	if err := s.store.Archive(ctx, k, id); err != nil {
 		return mapErr(err)
+	}
+	// Soft-delete the row's translations too (§4.7); stored questionnaires keep the code.
+	if err := s.store.ArchiveTranslations(ctx, k, id); err != nil {
+		return apperror.Internal(err)
 	}
 	s.record(ctx, actorID, k, "archive", id, nil)
 	return nil
@@ -186,6 +226,67 @@ func (s *Service) ImportDefaults(ctx context.Context) (int, error) {
 		added++
 	}
 	return added, nil
+}
+
+// attachTranslations loads the translations of kind k (one query) onto items.
+func (s *Service) attachTranslations(ctx context.Context, k Kind, items []Item) error {
+	tr, err := s.store.Translations(ctx, k)
+	if err != nil {
+		return apperror.Internal(err)
+	}
+	for i := range items {
+		items[i].Translations = tr[items[i].ID]
+	}
+	return nil
+}
+
+// checkTranslations accepts only supported, non-default locale keys ("en"); "id" is the base row.
+func checkTranslations(in map[string]TranslationInput) error {
+	for key := range in {
+		l, ok := i18n.Parse(key)
+		if !ok || string(l) != key || l == i18n.Default {
+			return fieldErr("translations."+key, "locale tidak didukung (pakai: en)")
+		}
+	}
+	return nil
+}
+
+// applyTranslations upserts the sent translation fields of it (uniqueness per entity, locale and
+// field is enforced by SetTranslation) and records each change in diff for the audit log.
+// Description is genre-only, like the base column.
+func (s *Service) applyTranslations(ctx context.Context, it *Item, in map[string]TranslationInput, diff map[string]any) error {
+	if len(in) == 0 {
+		return nil
+	}
+	if it.Translations == nil {
+		it.Translations = map[i18n.Locale]Text{}
+	}
+	for key, t := range in {
+		l := i18n.Locale(key)
+		cur := it.Translations[l]
+		set := func(field string, dst *string, v *string) error {
+			if v == nil || strings.TrimSpace(*v) == *dst {
+				return nil
+			}
+			val := strings.TrimSpace(*v)
+			if err := s.store.SetTranslation(ctx, it.Kind, it.ID, l, field, val); err != nil {
+				return apperror.Internal(err)
+			}
+			*dst = val
+			diff["translations."+key+"."+field] = val
+			return nil
+		}
+		if err := set(FieldName, &cur.Name, t.Name); err != nil {
+			return err
+		}
+		if it.Kind == KindGenre {
+			if err := set(FieldDescription, &cur.Description, t.Description); err != nil {
+				return err
+			}
+		}
+		it.Translations[l] = cur
+	}
+	return nil
 }
 
 func (s *Service) get(ctx context.Context, k Kind, id string) (Item, error) {

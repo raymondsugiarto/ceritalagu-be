@@ -169,20 +169,20 @@ func (s *Service) ArchiveVoucher(ctx context.Context, actorID, id string) error 
 func (s *Service) UsableVoucher(ctx context.Context, code string, now time.Time) (Voucher, error) {
 	code = NormalizeCode(code)
 	if code == "" {
-		return Voucher{}, apperror.BadRequest("Masukkan kode voucher.")
+		return Voucher{}, apperror.BadRequest("Masukkan kode voucher.").WithReason(apperror.ReasonVoucherRequired)
 	}
 	v, err := s.store.VoucherByCode(ctx, code)
 	if errors.Is(err, ErrNotFound) {
-		return Voucher{}, apperror.BadRequest("Kode voucher tidak ditemukan.")
+		return Voucher{}, apperror.BadRequest("Kode voucher tidak ditemukan.").WithReason(apperror.ReasonVoucherNotFound)
 	}
 	if err != nil {
 		return Voucher{}, apperror.Internal(err)
 	}
 	if !v.IsActive {
-		return Voucher{}, apperror.BadRequest("Voucher ini sudah tidak aktif.")
+		return Voucher{}, apperror.BadRequest("Voucher ini sudah tidak aktif.").WithReason(apperror.ReasonVoucherInactive)
 	}
 	if !now.Before(v.ExpiresAt) {
-		return Voucher{}, apperror.BadRequest("Voucher ini sudah kedaluwarsa.")
+		return Voucher{}, apperror.BadRequest("Voucher ini sudah kedaluwarsa.").WithReason(apperror.ReasonVoucherExpired)
 	}
 	return v, nil
 }

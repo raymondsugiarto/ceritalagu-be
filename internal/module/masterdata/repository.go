@@ -8,6 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"github.com/yourorg/music-api/internal/i18n"
 )
 
 // ErrNotFound is returned when no row matches.
@@ -159,4 +162,100 @@ func values(it Item) map[string]any {
 func (m row) toItem(k Kind) Item {
 	return Item{ID: m.ID, Kind: k, Code: m.Code, Name: m.Name, Description: m.Description, Icon: m.Icon,
 		Hint: m.Hint, SortOrder: m.SortOrder, IsActive: m.IsActive, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+}
+
+// translationRow maps table translation (i18n plan §4.3).
+type translationRow struct {
+	ID         string         `gorm:"column:id;primaryKey"`
+	EntityType string         `gorm:"column:entity_type"`
+	EntityID   string         `gorm:"column:entity_id"`
+	Locale     string         `gorm:"column:locale"`
+	Field      string         `gorm:"column:field"`
+	Value      string         `gorm:"column:value"`
+	CreatedAt  time.Time      `gorm:"column:created_at"`
+	UpdatedAt  time.Time      `gorm:"column:updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"column:deleted_at"`
+}
+
+func (translationRow) TableName() string { return "translation" }
+
+// Translations returns every live translation of kind k in one query, keyed by entity ID then
+// locale. When a key has several live rows (should not happen; the service upserts) the most
+// recently updated one wins.
+func (r *GormRepository) Translations(ctx context.Context, k Kind) (map[string]map[i18n.Locale]Text, error) {
+	var rows []translationRow
+	err := r.db.WithContext(ctx).
+		Where("entity_type = ?", string(k)).
+		Order("updated_at, created_at").
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("select %s translations: %w", k, err)
+	}
+	out := map[string]map[i18n.Locale]Text{}
+	for _, t := range rows {
+		byLocale := out[t.EntityID]
+		if byLocale == nil {
+			byLocale = map[i18n.Locale]Text{}
+			out[t.EntityID] = byLocale
+		}
+		tx := byLocale[i18n.Locale(t.Locale)]
+		switch t.Field {
+		case FieldName:
+			tx.Name = t.Value
+		case FieldDescription:
+			tx.Description = t.Value
+		}
+		byLocale[i18n.Locale(t.Locale)] = tx
+	}
+	return out, nil
+}
+
+// SetTranslation upserts one (entity, locale, field) value inside a transaction: the live row is
+// updated, or one is created when none exists. An empty value soft-deletes the live row(s).
+// Uniqueness is the app's job (no UNIQUE constraint, database-standards §3).
+func (r *GormRepository) SetTranslation(ctx context.Context, k Kind, entityID string, l i18n.Locale, field, value string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var live []translationRow
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("entity_type = ? AND entity_id = ? AND locale = ? AND field = ?", string(k), entityID, string(l), field).
+			Order("updated_at DESC").
+			Find(&live).Error
+		if err != nil {
+			return fmt.Errorf("select translation: %w", err)
+		}
+		now := time.Now().UTC()
+		if value == "" {
+			if len(live) == 0 {
+				return nil
+			}
+			ids := make([]string, len(live))
+			for i, t := range live {
+				ids[i] = t.ID
+			}
+			return tx.Model(&translationRow{}).Where("id IN ?", ids).
+				Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
+		}
+		if len(live) > 0 {
+			return tx.Model(&translationRow{}).Where("id = ?", live[0].ID).
+				Updates(map[string]any{"value": value, "updated_at": now}).Error
+		}
+		row := translationRow{ID: uuid.NewString(), EntityType: string(k), EntityID: entityID, Locale: string(l),
+			Field: field, Value: value, CreatedAt: now, UpdatedAt: now}
+		if err := tx.Create(&row).Error; err != nil {
+			return fmt.Errorf("insert translation: %w", err)
+		}
+		return nil
+	})
+}
+
+// ArchiveTranslations soft-deletes every live translation of one row (when the row is archived).
+func (r *GormRepository) ArchiveTranslations(ctx context.Context, k Kind, entityID string) error {
+	now := time.Now().UTC()
+	err := r.db.WithContext(ctx).Model(&translationRow{}).
+		Where("entity_type = ? AND entity_id = ?", string(k), entityID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
+	if err != nil {
+		return fmt.Errorf("archive %s %s translations: %w", k, entityID, err)
+	}
+	return nil
 }

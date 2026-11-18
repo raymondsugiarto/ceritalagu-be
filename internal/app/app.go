@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
 	"github.com/yourorg/music-api/config"
+	"github.com/yourorg/music-api/internal/i18n"
 	"github.com/yourorg/music-api/internal/validator"
 )
 
@@ -53,6 +54,7 @@ func New(cfg config.Config, log *slog.Logger, health *Health, modules ...Module)
 	//   requestid -> every later log line and error carries the ID
 	//   accessLog -> wraps recover, so panicking requests are still logged with their final status
 	//   recover   -> turns panics into errors handled by errorHandler
+	//   locale    -> request locale (?locale → NEXT_LOCALE cookie → Accept-Language → id) in c.Context()
 	f.Use(requestid.New())
 	f.Use(accessLog(log))
 	f.Use(recover.New(recover.Config{EnableStackTrace: !rest.IsProduction()}))
@@ -63,6 +65,7 @@ func New(cfg config.Config, log *slog.Logger, health *Health, modules ...Module)
 		AllowHeaders:  []string{fiber.HeaderAuthorization, fiber.HeaderContentType, fiber.HeaderXRequestID},
 		ExposeHeaders: []string{fiber.HeaderXRequestID},
 	}))
+	f.Use(i18n.Middleware())
 
 	health.RegisterRoutes(f)
 	v1 := f.Group("/api/v1")

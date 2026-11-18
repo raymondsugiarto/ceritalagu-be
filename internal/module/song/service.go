@@ -74,7 +74,7 @@ func (s *Service) CreateJob(ctx context.Context, v guest.Visitor, in CreateSongJ
 		return SongJobOutput{}, apperror.Internal(err)
 	}
 	if int(used) >= s.limits.GuestDailyQuota {
-		return SongJobOutput{}, apperror.TooMany("Kuota lagu gratis hari ini sudah habis. Coba lagi besok atau daftar untuk melanjutkan.")
+		return SongJobOutput{}, apperror.TooMany("Kuota lagu gratis hari ini sudah habis. Coba lagi besok atau daftar untuk melanjutkan.").WithReason(apperror.ReasonDailyQuotaExceeded)
 	}
 	return s.start(ctx, Job{QuestionnaireID: q.ID, GuestSessionID: v.SessionID, UserID: q.UserID}, s.limits.MaxRegenerate)
 }
@@ -108,14 +108,14 @@ func (s *Service) Regenerate(ctx context.Context, v guest.Visitor, jobID string)
 		return SongJobOutput{}, err
 	}
 	if !j.Status.IsFinal() {
-		return SongJobOutput{}, apperror.Conflict("Lagu ini masih diproses.")
+		return SongJobOutput{}, apperror.Conflict("Lagu ini masih diproses.").WithReason(apperror.ReasonJobInProgress)
 	}
 	left, err := s.regeneratesLeft(ctx, j)
 	if err != nil {
 		return SongJobOutput{}, err
 	}
 	if left <= 0 {
-		return SongJobOutput{}, apperror.TooMany("Batas buat ulang untuk lagu ini sudah habis.")
+		return SongJobOutput{}, apperror.TooMany("Batas buat ulang untuk lagu ini sudah habis.").WithReason(apperror.ReasonRegenerateLimitReached)
 	}
 	return s.start(ctx, Job{
 		QuestionnaireID: j.QuestionnaireID, GuestSessionID: j.GuestSessionID, UserID: j.UserID,
@@ -152,7 +152,7 @@ func (s *Service) FullAudio(ctx context.Context, v guest.Visitor, id string) ([]
 		return nil, Song{}, err
 	}
 	if !sg.IsUnlocked {
-		return nil, Song{}, apperror.Forbidden("Lagu lengkap tersedia setelah pembayaran.")
+		return nil, Song{}, apperror.Forbidden("Lagu lengkap tersedia setelah pembayaran.").WithReason(apperror.ReasonFullSongLocked)
 	}
 	data, err := s.audio.Get(ctx, sg.FullAudioKey)
 	if err != nil {
@@ -183,7 +183,7 @@ func (s *Service) start(ctx context.Context, j Job, regeneratesLeft int) (SongJo
 		if saveErr := s.repo.UpdateJob(ctx, j); saveErr != nil {
 			return SongJobOutput{}, apperror.Internal(errors.Join(err, saveErr))
 		}
-		return SongJobOutput{}, apperror.Unavailable("Layanan sedang sibuk. Silakan coba lagi.", err)
+		return SongJobOutput{}, apperror.Unavailable("Layanan sedang sibuk. Silakan coba lagi.", err).WithReason(apperror.ReasonGenerationUnavailable)
 	}
 	return toSongJobOutput(j, "", regeneratesLeft), nil
 }

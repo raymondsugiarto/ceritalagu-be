@@ -95,7 +95,7 @@ func (s *Service) checkOptions(ctx context.Context, a *Answers) error {
 	check := func(k masterdata.Kind, field, code, otherField string, other *string) error {
 		if other != nil && code == masterdata.OtherCode {
 			if *other == "" {
-				details = append(details, apperror.ErrorDetail{Field: otherField, Message: "is required"})
+				details = append(details, apperror.ErrorDetail{Field: otherField, Message: "is required", Reason: apperror.ReasonRequired})
 			}
 			return nil
 		}
@@ -107,7 +107,7 @@ func (s *Service) checkOptions(ctx context.Context, a *Answers) error {
 			return apperror.Internal(err)
 		}
 		if !ok {
-			details = append(details, apperror.ErrorDetail{Field: field, Message: "pilihan ini sudah tidak tersedia"})
+			details = append(details, apperror.ErrorDetail{Field: field, Message: "pilihan ini sudah tidak tersedia", Reason: apperror.ReasonOptionUnavailable})
 		}
 		return nil
 	}

@@ -30,11 +30,17 @@ const (
 type ErrorDetail struct {
 	Field   string `json:"field,omitempty"`
 	Message string `json:"message"`
+	// Reason is an optional stable, machine-readable cause (e.g. "option_unavailable") that clients
+	// map to their own localized text. Message stays a fallback.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Error is a client-facing error. The global error handler turns it into the response envelope.
 type Error struct {
-	Code    Code
+	Code Code
+	// Reason is an optional stable, machine-readable cause within Code (e.g. "voucher_expired").
+	// Clients map it to localized text; Message is the developer-facing fallback. See reason.go.
+	Reason  string
 	Message string        // safe to show to clients
 	Status  int           // HTTP status
 	Details []ErrorDetail // per-field details (validation errors)
@@ -49,6 +55,13 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Err }
+
+// WithReason returns a copy of e carrying reason (one of the Reason* constants).
+func (e *Error) WithReason(reason string) *Error {
+	cp := *e
+	cp.Reason = reason
+	return &cp
+}
 
 // Wrap attaches a cause for logging without changing what the client sees.
 func (e *Error) Wrap(err error) *Error {

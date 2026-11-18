@@ -211,8 +211,8 @@ Error (`data` is omitted):
   `CONFIG_DIR=example` reads the templates; `CONFIG_PATH=/dir` reads any directory (the container sets it).
 - Invalid config fails startup with a clear error (`Config.validate`).
 - Secrets never live in tracked YAML and are never logged; set them by env (`SERVER_REST_SECRETKEY=…`).
-- Mail is one concern (`mail.yml`) with three drivers (`log`, `smtp`, `brevo`); `internal/mail` implements them
-  behind one `Sender` interface. Secrets (`MAIL_SMTP_PASSWORD`, `MAIL_BREVO_APIKEY`) come from env only.
+- Mail is one concern (`mail.yml`) with two drivers (`log`, `brevo`); `internal/mail` implements them
+  behind one `Sender` interface. The secret `MAIL_BREVO_APIKEY` comes from env only.
 - "Your song is ready" is a separate concern (`notification.yml`) so it can be turned off without touching mail
   config. It is wired in the **worker** (`internal/cli/worker.go`), not the API.
 

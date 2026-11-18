@@ -120,7 +120,7 @@ func perIP(name string, limit int) fiber.Handler {
 			return "auth-" + name + ":" + c.IP()
 		},
 		LimitReached: func(_ fiber.Ctx) error {
-			return apperror.TooMany("Terlalu banyak percobaan. Coba lagi sebentar lagi.")
+			return apperror.TooMany("Terlalu banyak percobaan. Coba lagi sebentar lagi.").WithReason(apperror.ReasonTooManyAttempts)
 		},
 	})
 }

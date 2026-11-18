@@ -146,11 +146,7 @@ func (c Config) validate() error {
 	switch c.Mail.Driver {
 	case "log":
 		if c.Server.Rest.Env == "production" {
-			return fmt.Errorf("mail.driver log prints login codes to the log; use smtp or brevo in production")
-		}
-	case "smtp":
-		if c.Mail.SMTP.Host == "" || c.Mail.SMTP.Port == 0 || c.Mail.From == "" {
-			return fmt.Errorf("mail.driver smtp needs mail.from, MAIL_SMTP_HOST and MAIL_SMTP_PORT")
+			return fmt.Errorf("mail.driver log prints login codes to the log; use brevo in production")
 		}
 	case "brevo":
 		if c.Mail.Brevo.APIKey == "" {
@@ -160,7 +156,7 @@ func (c Config) validate() error {
 			return fmt.Errorf("mail.driver brevo needs MAIL_BREVO_SENDEREMAIL (a verified sender)")
 		}
 	default:
-		return fmt.Errorf("mail.driver must be log, smtp or brevo, got %q", c.Mail.Driver)
+		return fmt.Errorf("mail.driver must be log or brevo, got %q", c.Mail.Driver)
 	}
 	if c.Notification.Enabled && c.Notification.MaxAttachmentMB <= 0 {
 		return fmt.Errorf("notification.maxAttachmentMB must be > 0 when notification.enabled is on")

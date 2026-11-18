@@ -54,12 +54,12 @@ var bcryptCost = 12
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-password"), bcryptCost)
 
 var (
-	errNotRegistered = apperror.NotFound("Email ini belum terdaftar. Buat lagu pertamamu dulu — emailmu akan terdaftar di langkah terakhir.")
-	errSuspended     = apperror.Forbidden("Akun ini sedang dinonaktifkan. Hubungi kami untuk bantuan.")
-	errBadLogin      = apperror.Unauthorized("Email atau password salah.")
+	errNotRegistered = apperror.NotFound("Email ini belum terdaftar. Buat lagu pertamamu dulu — emailmu akan terdaftar di langkah terakhir.").WithReason(apperror.ReasonEmailNotRegistered)
+	errSuspended     = apperror.Forbidden("Akun ini sedang dinonaktifkan. Hubungi kami untuk bantuan.").WithReason(apperror.ReasonAccountSuspended)
+	errBadLogin      = apperror.Unauthorized("Email atau password salah.").WithReason(apperror.ReasonInvalidCredentials)
 	errCodeInvalid   = "Kode salah. Periksa lagi email dari kami."
-	errCodeExpired   = apperror.BadRequest("Kode sudah tidak berlaku. Minta kode baru.")
-	errSetupExpired  = apperror.Unauthorized("Sesi verifikasi sudah berakhir. Masuk lagi untuk menerima kode baru.")
+	errCodeExpired   = apperror.BadRequest("Kode sudah tidak berlaku. Minta kode baru.").WithReason(apperror.ReasonOTPExpired)
+	errSetupExpired  = apperror.Unauthorized("Sesi verifikasi sudah berakhir. Masuk lagi untuk menerima kode baru.").WithReason(apperror.ReasonSetupSessionExpired)
 )
 
 // Lookup says whether email signs in with a password or an emailed code.
@@ -86,7 +86,7 @@ func (s *Service) RequestOTP(ctx context.Context, email string) (OTPSentOutput, 
 		return OTPSentOutput{}, err
 	}
 	if method == MethodPassword {
-		return OTPSentOutput{}, apperror.Conflict("Akun ini sudah punya password. Masuk dengan password.")
+		return OTPSentOutput{}, apperror.Conflict("Akun ini sudah punya password. Masuk dengan password.").WithReason(apperror.ReasonPasswordAlreadySet)
 	}
 	now := s.now()
 	last, err := s.repo.LatestOTP(ctx, u.Email, PurposeLogin)
@@ -112,7 +112,7 @@ func (s *Service) RequestOTP(ctx context.Context, email string) (OTPSentOutput, 
 		return OTPSentOutput{}, apperror.Internal(err)
 	}
 	if err := s.mailer.Send(ctx, otpMessage(u.Email, code)); err != nil {
-		return OTPSentOutput{}, apperror.Unavailable("Kode belum bisa dikirim. Coba lagi sebentar lagi.", err)
+		return OTPSentOutput{}, apperror.Unavailable("Kode belum bisa dikirim. Coba lagi sebentar lagi.", err).WithReason(apperror.ReasonOTPSendFailed)
 	}
 	return OTPSentOutput{Email: u.Email, ExpiresInSec: int(OTPTTL.Seconds()), ResendAfterSec: int(OTPResendAfter.Seconds())}, nil
 }
@@ -139,9 +139,9 @@ func (s *Service) VerifyOTP(ctx context.Context, in VerifyOTPInput) (OTPVerified
 			return OTPVerifiedOutput{}, apperror.Internal(err)
 		}
 		if n >= OTPMaxAttempts {
-			return OTPVerifiedOutput{}, apperror.BadRequest("Terlalu banyak kode salah. Minta kode baru.")
+			return OTPVerifiedOutput{}, apperror.BadRequest("Terlalu banyak kode salah. Minta kode baru.").WithReason(apperror.ReasonOTPTooManyAttempts)
 		}
-		return OTPVerifiedOutput{}, apperror.Validation([]apperror.ErrorDetail{{Field: "code", Message: errCodeInvalid}})
+		return OTPVerifiedOutput{}, apperror.Validation([]apperror.ErrorDetail{{Field: "code", Message: errCodeInvalid, Reason: apperror.ReasonOTPInvalid}})
 	}
 	if err := s.repo.ConsumeOTP(ctx, o.ID, now); err != nil {
 		if errors.Is(err, ErrAlreadyUsed) {
@@ -183,7 +183,7 @@ func (s *Service) SetPassword(ctx context.Context, v guest.Visitor, in SetPasswo
 	cred := Credential{ID: uuid.NewString(), UserID: u.ID, PasswordHash: string(hash), PasswordSetAt: now, CreatedAt: now, UpdatedAt: now}
 	if err := s.repo.CreateCredential(ctx, cred); err != nil {
 		if errors.Is(err, ErrCredentialed) {
-			return CustomerOutput{}, "", apperror.Conflict("Password akun ini sudah diatur. Masuk dengan password.")
+			return CustomerOutput{}, "", apperror.Conflict("Password akun ini sudah diatur. Masuk dengan password.").WithReason(apperror.ReasonPasswordAlreadySet)
 		}
 		return CustomerOutput{}, "", apperror.Internal(err)
 	}
@@ -223,7 +223,7 @@ func (s *Service) Login(ctx context.Context, v guest.Visitor, in LoginInput) (Cu
 
 // Authenticate turns a session token into the signed-in customer.
 func (s *Service) Authenticate(ctx context.Context, token string) (user.User, error) {
-	unauthorized := apperror.Unauthorized("Silakan masuk terlebih dahulu.")
+	unauthorized := apperror.Unauthorized("Silakan masuk terlebih dahulu.").WithReason(apperror.ReasonLoginRequired)
 	c, err := s.keys.parse(token, kindSession, s.now())
 	if err != nil {
 		return user.User{}, unauthorized.Wrap(err)
@@ -292,17 +292,17 @@ func (s *Service) methodOf(ctx context.Context, userID string) (Method, error) {
 }
 
 func checkPassword(p string) error {
-	var msg string
+	var msg, reason string
 	switch {
 	case len(p) < MinPasswordLength:
-		msg = fmt.Sprintf("Minimal %d karakter.", MinPasswordLength)
+		msg, reason = fmt.Sprintf("Minimal %d karakter.", MinPasswordLength), apperror.ReasonPasswordTooShort
 	case len(p) > MaxPasswordLength:
-		msg = fmt.Sprintf("Maksimal %d karakter.", MaxPasswordLength)
+		msg, reason = fmt.Sprintf("Maksimal %d karakter.", MaxPasswordLength), apperror.ReasonPasswordTooLong
 	case strings.TrimSpace(p) == "":
-		msg = "Password tidak boleh hanya spasi."
+		msg, reason = "Password tidak boleh hanya spasi.", apperror.ReasonPasswordBlank
 	}
 	if msg != "" {
-		return apperror.Validation([]apperror.ErrorDetail{{Field: "password", Message: msg}})
+		return apperror.Validation([]apperror.ErrorDetail{{Field: "password", Message: msg, Reason: reason}})
 	}
 	return nil
 }

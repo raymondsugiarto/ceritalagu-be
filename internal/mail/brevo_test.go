@@ -195,3 +195,26 @@ func newBrevo(t *testing.T, baseURL string, sandbox bool) *mail.BrevoSender {
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
+
+func TestBrevoSetsReplyTo(t *testing.T) {
+	t.Parallel()
+	var got capturedRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &got.Body)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	err := newBrevo(t, srv.URL, false).Send(context.Background(), mail.Message{
+		To: "hello@ceritalagu.com", Subject: "Kontak", Text: "Halo",
+		ReplyTo: "rina@example.com", ReplyToName: "Rina",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, ok := got.Body["replyTo"].(map[string]any)
+	if !ok || rt["email"] != "rina@example.com" || rt["name"] != "Rina" {
+		t.Errorf("replyTo = %#v", got.Body["replyTo"])
+	}
+}

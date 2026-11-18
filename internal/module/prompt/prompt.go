@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yourorg/music-api/internal/i18n"
 	"github.com/yourorg/music-api/internal/module/questionnaire"
 )
 
@@ -34,6 +35,24 @@ type Hints struct {
 	OccasionName      string
 	GenreName         string
 	MoodName          string
+}
+
+// SongLocale is the locale of the option names in the prompt: the song language chosen in the
+// questionnaire (§4.10), not the UI locale. Unknown values fall back to the default (id).
+func SongLocale(l questionnaire.Language) i18n.Locale {
+	if l == questionnaire.LanguageEN {
+		return i18n.EN
+	}
+	return i18n.Default
+}
+
+// OptionName is the option label for the prompt: the translation in the song language when one
+// exists, else the base (id) name.
+func OptionName(base, translated string) string {
+	if t := strings.TrimSpace(translated); t != "" {
+		return t
+	}
+	return base
 }
 
 // label is what the AI reads for a choice: the free text for "Lainnya", else the option name,
@@ -65,7 +84,11 @@ func Render(t Template, a questionnaire.Answers, h Hints) (system, user string) 
 	mood := label(a.Mood, "", h.MoodName)
 	moodHint := h.Mood
 	if mood == "" {
+		// No mood chosen: a label in the song language (§4.10); the hint stays English.
 		mood = "sesuai momen"
+		if a.Language == questionnaire.LanguageEN {
+			mood = "to suit the occasion"
+		}
 		moodHint = "match the occasion"
 	}
 	r := strings.NewReplacer(

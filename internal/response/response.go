@@ -26,6 +26,7 @@ const CodeSuccess = "SUCCESS"
 type Response[T any] struct {
 	HTTPCode  int                    `json:"-"`
 	Code      string                 `json:"code"`
+	Reason    string                 `json:"reason,omitempty"` // optional stable cause (apperror.Reason*)
 	Message   string                 `json:"message"`
 	Errors    []apperror.ErrorDetail `json:"errors"`
 	Data      T                      `json:"data,omitzero"` // omitzero, not omitempty: an empty list stays []
@@ -66,6 +67,7 @@ func Error(c fiber.Ctx, e *apperror.Error) error {
 	return Write(c, Response[any]{
 		HTTPCode: e.Status,
 		Code:     string(e.Code),
+		Reason:   e.Reason,
 		Message:  e.Message,
 		Errors:   e.Details,
 	})

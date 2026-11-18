@@ -86,7 +86,7 @@ func NewService(repo Repository, songs Songs, users Users, prices Pricing, gatew
 		now: func() time.Time { return time.Now().UTC() }}
 }
 
-var errDisabled = apperror.Unavailable("Pembayaran belum tersedia. Silakan coba lagi nanti.", errors.New("payment gateway not configured"))
+var errDisabled = apperror.Unavailable("Pembayaran belum tersedia. Silakan coba lagi nanti.", errors.New("payment gateway not configured")).WithReason(apperror.ReasonPaymentUnavailable)
 
 // Pricing is shown next to the unlock button: normal price struck through, sale price below.
 func (s *Service) Pricing(ctx context.Context) (PricingOutput, error) {
@@ -133,17 +133,17 @@ func (s *Service) quote(ctx context.Context, v guest.Visitor, songID, voucherCod
 		return quote{}, err
 	}
 	if sg.IsUnlocked {
-		return quote{}, apperror.Conflict("Lagu ini sudah terbuka penuh.")
+		return quote{}, apperror.Conflict("Lagu ini sudah terbuka penuh.").WithReason(apperror.ReasonSongAlreadyUnlocked)
 	}
 	if sg.OwnerUserID == "" {
-		return quote{}, apperror.Conflict("Isi email dan nomor HP dulu sebelum membeli lagu.")
+		return quote{}, apperror.Conflict("Isi email dan nomor HP dulu sebelum membeli lagu.").WithReason(apperror.ReasonContactDetailsMissing)
 	}
 	buyer, err := s.users.GetByID(ctx, sg.OwnerUserID)
 	if err != nil {
 		return quote{}, apperror.Internal(err)
 	}
 	if buyer.Status == user.StatusSuspended {
-		return quote{}, apperror.Forbidden("Akun ini dinonaktifkan.")
+		return quote{}, apperror.Forbidden("Akun ini dinonaktifkan.").WithReason(apperror.ReasonAccountDisabled)
 	}
 	p, err := s.pricing.Prices(ctx)
 	if err != nil {
@@ -175,9 +175,9 @@ func (s *Service) checkVoucherLimits(ctx context.Context, q quote, held int64, n
 func voucherLimitErr(used, exhausted bool) error {
 	switch {
 	case used:
-		return apperror.Conflict("Voucher ini sudah kamu pakai.")
+		return apperror.Conflict("Voucher ini sudah kamu pakai.").WithReason(apperror.ReasonVoucherAlreadyUsed)
 	case exhausted:
-		return apperror.Conflict("Kuota voucher ini sudah habis.")
+		return apperror.Conflict("Kuota voucher ini sudah habis.").WithReason(apperror.ReasonVoucherQuotaExhausted)
 	}
 	return nil
 }
@@ -264,7 +264,7 @@ func (s *Service) Checkout(ctx context.Context, v guest.Visitor, songID, voucher
 		if saveErr := s.repo.Update(ctx, o); saveErr != nil {
 			err = errors.Join(err, saveErr)
 		}
-		return CheckoutOutput{}, apperror.Unavailable("Halaman pembayaran tidak bisa dibuka. Coba lagi sebentar lagi.", err)
+		return CheckoutOutput{}, apperror.Unavailable("Halaman pembayaran tidak bisa dibuka. Coba lagi sebentar lagi.", err).WithReason(apperror.ReasonCheckoutUnavailable)
 	}
 	o.PaymentURL, o.GatewayRequestID, o.GatewayResponse, o.UpdatedAt = res.PaymentURL, res.RequestID, res.Raw, s.now()
 	if err := s.repo.Update(ctx, o); err != nil {

@@ -1,3 +1,4 @@
+version: "3.7"
 services:
   music-api:
     image: ghcr.io/${IMAGE_OWNER:-raymondsugiarto}/music-api:latest
@@ -11,7 +12,7 @@ services:
       DATABASE_MAIN_USER: ${DATABASE_MAIN_USER:-music}
       DATABASE_MAIN_PASSWORD: ${DATABASE_MAIN_PASSWORD:?Set DATABASE_MAIN_PASSWORD in the Portainer stack}
       DATABASE_MAIN_NAME: music
-      REDIS_ADDR: redis:6379
+      REDIS_ADDR: ${REDIS_ADDR:?Set REDIS_PASSWORD in the Portainer stack}:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in the Portainer stack}
       SECURITY_MASTERKEY: ${SECURITY_MASTERKEY:?Set SECURITY_MASTERKEY in the Portainer stack}
       SECURITY_IPHASHSALT: ${SECURITY_IPHASHSALT:?Set SECURITY_IPHASHSALT in the Portainer stack}
@@ -25,14 +26,10 @@ services:
       STORAGE_S3_SECRETACCESSKEY: ${STORAGE_S3_SECRETACCESSKEY:-}
       STORAGE_S3_USEPATHSTYLE: ${STORAGE_S3_USEPATHSTYLE:-false}
       STORAGE_S3_PREFIX: ${STORAGE_S3_PREFIX:-}
-      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
-      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM in the Portainer stack}
-      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
-      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-587}
-      MAIL_SMTP_USERNAME: ${MAIL_SMTP_USERNAME:-}
-      MAIL_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD:-}
-      MAIL_BREVO_APIKEY: ${MAIL_BREVO_APIKEY:-}
-      MAIL_BREVO_SENDEREMAIL: ${MAIL_BREVO_SENDEREMAIL:-}
+      MAIL_DRIVER: ${MAIL_DRIVER:-brevo}
+      MAIL_BREVO_APIKEY: ${MAIL_BREVO_APIKEY:?Set MAIL_BREVO_APIKEY in the Portainer stack}
+      MAIL_BREVO_SENDEREMAIL: ${MAIL_BREVO_SENDEREMAIL:?Set MAIL_BREVO_SENDEREMAIL (a verified Brevo sender)}
+      MAIL_BREVO_SENDERNAME: ${MAIL_BREVO_SENDERNAME:-Lagu Untukmu}
       NOTIFICATION_ENABLED: ${NOTIFICATION_ENABLED:-false}
       NOTIFICATION_ATTACHFULLAUDIO: ${NOTIFICATION_ATTACHFULLAUDIO:-false}
       NOTIFICATION_MAXATTACHMENTMB: ${NOTIFICATION_MAXATTACHMENTMB:-3}
@@ -45,7 +42,9 @@ services:
       PAYMENT_DOKU_SECRETKEY: ${PAYMENT_DOKU_SECRETKEY:-}
       PAYMENT_DOKU_NOTIFYPATH: ${PAYMENT_DOKU_NOTIFYPATH:-/api/v1/payments/doku/notifications}
     volumes:
-      - song-storage:/data/storage
+      - ${STORAGE_DIR:-./song/storage}:/data/storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8080"
     healthcheck:
@@ -70,8 +69,7 @@ services:
     volumes:
       - song-storage:/data/storage
     depends_on:
-      music-api:
-        condition: service_healthy
+      - music-api
     restart: unless-stopped
 
 volumes:

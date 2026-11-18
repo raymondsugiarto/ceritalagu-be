@@ -28,6 +28,7 @@ import (
 	"github.com/yourorg/music-api/internal/module/aiprovider/sunoapi"
 	"github.com/yourorg/music-api/internal/module/audit"
 	"github.com/yourorg/music-api/internal/module/auth"
+	"github.com/yourorg/music-api/internal/module/contact"
 	"github.com/yourorg/music-api/internal/module/generation"
 	"github.com/yourorg/music-api/internal/module/guest"
 	"github.com/yourorg/music-api/internal/module/masterdata"
@@ -149,6 +150,7 @@ func serve(ctx context.Context) error {
 		questionnaire.NewHandler(questionnaireSvc),
 		song.NewHandler(songSvc),
 		payment.NewHandler(paymentSvc),
+		contact.NewHandler(contact.NewService(mailer, cfg.Mail.ContactInbox(), log)),
 		song.NewAdminHandler(song.NewAdminService(song.NewGormRepository(gdb)), guard.Require(admin.RoleSuperAdmin)),
 		song.NewAdminSongHandler(song.NewAdminSongService(song.NewGormRepository(gdb), store), guard.Require(admin.RoleSuperAdmin)),
 		auth.NewHandler(authSvc, cfg.Security.CookieSecure),

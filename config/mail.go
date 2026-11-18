@@ -5,21 +5,23 @@ import "time"
 // MailConfig is mail.yml: outgoing email (login OTP codes, song notifications).
 //
 // driver log prints every email to the server log instead of sending it (development only).
-// driver smtp sends through an SMTP server; the password comes from env only: MAIL_SMTP_PASSWORD.
 // driver brevo sends through the Brevo API; the API key comes from env only: MAIL_BREVO_APIKEY.
 type MailConfig struct {
-	Driver string      `mapstructure:"driver"` // log | smtp | brevo
-	From   string      `mapstructure:"from"`   // e.g. "Lagu Untukmu <no-reply@example.com>"
-	SMTP   SMTPConfig  `mapstructure:"smtp"`
+	Driver string      `mapstructure:"driver"` // log | brevo
 	Brevo  BrevoConfig `mapstructure:"brevo"`
+	// ContactTo is the inbox that receives messages from the website contact form.
+	ContactTo string `mapstructure:"contactTo"` // MAIL_CONTACTTO
 }
 
-// SMTPConfig is an SMTP relay. Port 465 uses implicit TLS; any other port uses STARTTLS when offered.
-type SMTPConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+// DefaultContactTo receives contact-form messages when mail.contactTo is empty.
+const DefaultContactTo = "hello@ceritalagu.com"
+
+// ContactInbox returns ContactTo, or DefaultContactTo when it is unset.
+func (c MailConfig) ContactInbox() string {
+	if c.ContactTo == "" {
+		return DefaultContactTo
+	}
+	return c.ContactTo
 }
 
 // BrevoConfig is the Brevo transactional email API (POST /v3/smtp/email).

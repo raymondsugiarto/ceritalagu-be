@@ -45,10 +45,10 @@ services join `platform`; the frontend calls the backend at
 Set these variables in the backend Portainer stack:
 
 - Required: `DATABASE_MAIN_PASSWORD`, `REDIS_PASSWORD`, `SECURITY_MASTERKEY`,
-  `SECURITY_IPHASHSALT`, `MAIL_FROM`, and `PAYMENT_PUBLICBASEURL`.
-- Email: use `MAIL_DRIVER=smtp` with `MAIL_SMTP_HOST` (and optionally port,
-  username, password), or `MAIL_DRIVER=brevo` with `MAIL_BREVO_APIKEY` and
-  `MAIL_BREVO_SENDEREMAIL`.
+  `SECURITY_IPHASHSALT`, `MAIL_BREVO_APIKEY`, `MAIL_BREVO_SENDEREMAIL`
+  (a verified Brevo sender), and `PAYMENT_PUBLICBASEURL`.
+- Email goes through Brevo (`MAIL_DRIVER` defaults to `brevo`); optionally set
+  `MAIL_BREVO_SENDERNAME`.
 - Optional: `IMAGE_OWNER` (defaults to `raymondsugiarto`), `DATABASE_MAIN_USER`,
   `STORAGE_DRIVER` and `STORAGE_S3_*`, `NOTIFICATION_*`, and DOKU settings
   `PAYMENT_DOKU_CLIENTID` / `PAYMENT_DOKU_SECRETKEY`. DOKU payments remain off

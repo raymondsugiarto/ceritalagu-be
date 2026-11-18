@@ -149,6 +149,8 @@ jobs:
           for v in PORTAINER_URL PORTAINER_USERNAME PORTAINER_PASSWORD PORTAINER_STACK_ID PORTAINER_ENDPOINT_ID; do
             if [ -z "${!v}" ]; then echo "::error::secret '$v' is empty or undefined"; exit 1; fi
           done
+          # Accept https://host:9443, https://host:9443/ or https://host:9443/api.
+          PORTAINER_URL="${PORTAINER_URL%/}"; PORTAINER_URL="${PORTAINER_URL%/api}"
 
           # Log in. -k accepts Portainer's self-signed certificate.
           jq -n --arg u "$PORTAINER_USERNAME" --arg p "$PORTAINER_PASSWORD" \
@@ -157,9 +159,12 @@ jobs:
             --data-binary @"$RUNNER_TEMP/auth.json" "$PORTAINER_URL/api/auth")
           rm -f "$RUNNER_TEMP/auth.json"
           CODE=$(echo "$RESP" | tail -1)
-          TOKEN=$(echo "$RESP" | sed '$d' | jq -r '.jwt // empty')
+          BODY=$(echo "$RESP" | sed '$d')
+          TOKEN=$(echo "$BODY" | jq -r 'if type == "object" then .jwt // empty else empty end' 2>/dev/null || true)
           if [ "$CODE" != "200" ] || [ -z "$TOKEN" ]; then
-            echo "::error::Portainer auth failed (HTTP $CODE)"; exit 1
+            echo "::error::Portainer auth failed (HTTP $CODE) at $PORTAINER_URL/api/auth: $(echo "$BODY" | head -c 300)"
+            [ "$CODE" = "404" ] && echo "::error::PORTAINER_URL must be the Portainer base URL, e.g. https://host:9443 (no path)."
+            exit 1
           fi
 
           # Keep the stack's environment variables: Portainer replaces them

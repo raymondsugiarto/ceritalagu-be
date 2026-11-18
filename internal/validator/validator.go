@@ -52,7 +52,7 @@ func (val *Validator) Validate(out any) error {
 
 	details := make([]apperror.ErrorDetail, 0, len(verrs))
 	for _, fe := range verrs {
-		details = append(details, apperror.ErrorDetail{Field: fe.Field(), Message: message(fe)})
+		details = append(details, apperror.ErrorDetail{Field: fe.Field(), Message: message(fe), Reason: reason(fe.Tag())})
 	}
 	return apperror.Validation(details)
 }
@@ -75,5 +75,23 @@ func message(fe validator.FieldError) string {
 		return "must be a valid UUID"
 	default:
 		return fmt.Sprintf("failed rule %q", fe.Tag())
+	}
+}
+
+// reason is the stable field-error reason for a failed rule (clients localize it).
+func reason(tag string) string {
+	switch tag {
+	case "required":
+		return apperror.ReasonRequired
+	case "email":
+		return apperror.ReasonInvalidEmail
+	case "min":
+		return apperror.ReasonBelowMin
+	case "max":
+		return apperror.ReasonAboveMax
+	case "oneof":
+		return apperror.ReasonInvalidChoice
+	default:
+		return apperror.ReasonInvalidFormat
 	}
 }

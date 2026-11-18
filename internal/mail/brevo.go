@@ -115,6 +115,9 @@ func (s *BrevoSender) build(m Message) ([]byte, error) {
 		HTMLContent: m.HTML,
 		TextContent: m.Text,
 	}
+	if m.ReplyTo != "" {
+		req.ReplyTo = &brevoAddress{Name: m.ReplyToName, Email: m.ReplyTo}
+	}
 	for _, f := range m.Files {
 		req.Attachment = append(req.Attachment, brevoAttachment{
 			Name:    f.Name,

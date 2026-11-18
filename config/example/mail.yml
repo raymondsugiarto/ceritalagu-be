@@ -1,15 +1,9 @@
 # Outgoing email (customer login OTP, song notifications).
 # log    = print emails (and the OTP) to the server log, nothing is sent. Development only.
-# smtp   = send via SMTP. Password only from env: MAIL_SMTP_PASSWORD.
 # brevo  = send via the Brevo API (https://api.brevo.com/v3/smtp/email). Key only from env: MAIL_BREVO_APIKEY.
 mail:
-  driver: log # log | smtp | brevo   (env MAIL_DRIVER)
-  from: "Lagu Untukmu <no-reply@laguuntukmu.local>"
-  smtp:
-    host:      # MAIL_SMTP_HOST
-    port: 587  # 465 = implicit TLS, 587 = STARTTLS
-    username:  # MAIL_SMTP_USERNAME
-    password:
+  driver: log # log | brevo   (env MAIL_DRIVER)
+  contactTo: hello@ceritalagu.com # MAIL_CONTACTTO: inbox for the website contact form
   brevo:
     apiKey:      # MAIL_BREVO_APIKEY
     baseUrl: https://api.brevo.com # MAIL_BREVO_BASEURL

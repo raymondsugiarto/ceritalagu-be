@@ -20,7 +20,10 @@ func NewHandler(svc *Service, auth fiber.Handler, actor func(c fiber.Ctx) string
 	return &Handler{svc: svc, auth: auth, actor: actor}
 }
 
+// options returns labels in the request locale (i18n middleware: ?locale → NEXT_LOCALE cookie →
+// Accept-Language → id), so any shared cache must key on those request headers too.
 func (h *Handler) options(c fiber.Ctx) error {
+	c.Vary(fiber.HeaderAcceptLanguage, fiber.HeaderCookie)
 	out, err := h.svc.QuestionnaireOptions(c.Context())
 	if err != nil {
 		return err
