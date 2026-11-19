@@ -84,7 +84,7 @@ func (p *Pipeline) Run(ctx context.Context, jobID string) error {
 		job.Timings = map[string]int64{}
 	}
 
-	s, err := p.run(ctx, &job)
+	s, alt, err := p.run(ctx, &job)
 	if err != nil {
 		log.Error("song job failed", "status_at_failure", job.Status, "attempt", job.Attempt,
 			"questionnaire_id", job.QuestionnaireID, "error_code", errorCode(err), "err", err)
@@ -101,6 +101,13 @@ func (p *Pipeline) Run(ctx context.Context, jobID string) error {
 		return fmt.Errorf("save completed job: %w", err)
 	}
 	log.Info("song job completed", "song_id", s.ID, "total_ms", job.Timings["total"])
+	if alt != nil {
+		if err := p.jobs.CreateAlternate(ctx, *alt); err != nil {
+			log.Warn("save spare take failed", "alternate_song_id", alt.SongID, "err", err)
+		} else {
+			log.Info("spare take saved", "alternate_song_id", alt.SongID, "root_job_id", alt.RootJobID)
+		}
+	}
 	p.notify(ctx, s)
 	return nil
 }
@@ -116,35 +123,35 @@ func (p *Pipeline) notify(ctx context.Context, s song.Song) {
 	}
 }
 
-func (p *Pipeline) run(ctx context.Context, job *song.Job) (song.Song, error) {
+func (p *Pipeline) run(ctx context.Context, job *song.Job) (song.Song, *song.Alternate, error) {
 	q, err := p.answers.Get(ctx, job.QuestionnaireID)
 	if err != nil {
-		return song.Song{}, fmt.Errorf("load questionnaire: %w", err)
+		return song.Song{}, nil, fmt.Errorf("load questionnaire: %w", err)
 	}
 
 	// 1. Lyrics & style.
 	if err := p.setStatus(ctx, job, song.JobGeneratingLyrics); err != nil {
-		return song.Song{}, err
+		return song.Song{}, nil, err
 	}
 	p.log.Info("song job step", "job_id", job.ID, "step", "lyrics_style")
 	ls, err := p.lyricsStyle(ctx, job, q.Answers)
 	if err != nil {
-		return song.Song{}, err
+		return song.Song{}, nil, err
 	}
 
 	// 2. Music.
 	if err := p.setStatus(ctx, job, song.JobGeneratingMusic); err != nil {
-		return song.Song{}, err
+		return song.Song{}, nil, err
 	}
 	p.log.Info("song job step", "job_id", job.ID, "step", "music")
 	music, err := p.music(ctx, job, ls)
 	if err != nil {
-		return song.Song{}, err
+		return song.Song{}, nil, err
 	}
 
 	// 3. Store full audio + preview.
 	if err := p.setStatus(ctx, job, song.JobProcessingAudio); err != nil {
-		return song.Song{}, err
+		return song.Song{}, nil, err
 	}
 	p.log.Info("song job step", "job_id", job.ID, "step", "processing_audio")
 	return p.finish(ctx, job, q, ls, music)
@@ -219,7 +226,7 @@ func (p *Pipeline) music(ctx context.Context, job *song.Job, ls aiprovider.Lyric
 	return res, nil
 }
 
-func (p *Pipeline) finish(ctx context.Context, job *song.Job, q questionnaire.Questionnaire, ls aiprovider.LyricsStyleResult, m aiprovider.MusicResult) (song.Song, error) {
+func (p *Pipeline) finish(ctx context.Context, job *song.Job, q questionnaire.Questionnaire, ls aiprovider.LyricsStyleResult, m aiprovider.MusicResult) (song.Song, *song.Alternate, error) {
 	t0 := p.now()
 	id := p.newID()
 	format := m.Format
@@ -229,23 +236,23 @@ func (p *Pipeline) finish(ctx context.Context, job *song.Job, q questionnaire.Qu
 	fullKey, previewKey := songKeys(job, id, format)
 
 	if err := p.store.Put(ctx, fullKey, m.Audio, contentType(format)); err != nil {
-		return song.Song{}, fmt.Errorf("store full audio: %w", err)
+		return song.Song{}, nil, fmt.Errorf("store full audio: %w", err)
 	}
 	duration := m.DurationSec
 	if duration <= 0 {
 		var err error
 		if duration, err = p.audio.Duration(ctx, m.Audio); err != nil {
-			return song.Song{}, fmt.Errorf("measure duration: %w", err)
+			return song.Song{}, nil, fmt.Errorf("measure duration: %w", err)
 		}
 	}
 	cut, method := previewCut(ls.Lyrics, m.Words, duration, p.opts.PreviewSeconds)
 	p.log.Info("preview cut", "job_id", job.ID, "method", method, "cut_sec", cut, "duration_sec", duration, "words", len(m.Words))
 	preview, err := p.audio.Preview(ctx, m.Audio, cut, p.opts.FadeSeconds)
 	if err != nil {
-		return song.Song{}, fmt.Errorf("cut preview: %w", err)
+		return song.Song{}, nil, fmt.Errorf("cut preview: %w", err)
 	}
 	if err := p.store.Put(ctx, previewKey, preview, "audio/mpeg"); err != nil {
-		return song.Song{}, fmt.Errorf("store preview: %w", err)
+		return song.Song{}, nil, fmt.Errorf("store preview: %w", err)
 	}
 
 	now := p.now()
@@ -262,8 +269,55 @@ func (p *Pipeline) finish(ctx context.Context, job *song.Job, q questionnaire.Qu
 		expires := now.Add(p.opts.GuestRetention)
 		s.ExpiresAt = &expires
 	}
+	alt := p.alternate(ctx, job, ls.Lyrics, m.Alternate)
 	job.Timings["processing_audio"] = p.now().Sub(t0).Milliseconds()
-	return s, nil
+	return s, alt, nil
+}
+
+// alternate stores the provider's second take (full audio + preview) under a song ID minted now,
+// ready for a later "Buat Ulang". It is best effort: any failure is logged and nil returned.
+func (p *Pipeline) alternate(ctx context.Context, job *song.Job, lyrics string, t *aiprovider.MusicTrack) *song.Alternate {
+	if t == nil || len(t.Audio) == 0 {
+		return nil
+	}
+	log := p.log.With("job_id", job.ID)
+	id := p.newID()
+	format := t.Format
+	if format == "" {
+		format = "mp3"
+	}
+	fullKey, previewKey := songKeys(job, id, format)
+	if err := p.store.Put(ctx, fullKey, t.Audio, contentType(format)); err != nil {
+		log.Warn("store spare take failed", "err", err)
+		return nil
+	}
+	duration := t.DurationSec
+	if duration <= 0 {
+		var err error
+		if duration, err = p.audio.Duration(ctx, t.Audio); err != nil {
+			log.Warn("measure spare take failed", "err", err)
+			return nil
+		}
+	}
+	cut, method := previewCut(lyrics, t.Words, duration, p.opts.PreviewSeconds)
+	preview, err := p.audio.Preview(ctx, t.Audio, cut, p.opts.FadeSeconds)
+	if err != nil {
+		log.Warn("cut spare preview failed", "err", err)
+		return nil
+	}
+	if err := p.store.Put(ctx, previewKey, preview, "audio/mpeg"); err != nil {
+		log.Warn("store spare preview failed", "err", err)
+		return nil
+	}
+	log.Info("spare take stored", "method", method, "cut_sec", cut, "duration_sec", duration)
+	root := job.RegenerateOfJobID
+	if root == "" {
+		root = job.ID
+	}
+	return &song.Alternate{
+		JobID: job.ID, RootJobID: root, SongID: id, FullAudioKey: fullKey, PreviewAudioKey: previewKey,
+		DurationSec: duration, PreviewDurationSec: min(int(math.Round(cut)), duration),
+	}
 }
 
 func (p *Pipeline) setStatus(ctx context.Context, job *song.Job, s song.JobStatus) error {

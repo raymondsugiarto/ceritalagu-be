@@ -39,8 +39,27 @@ type Job struct {
 	Timings                map[string]int64 // step -> milliseconds
 	StartedAt              *time.Time
 	FinishedAt             *time.Time
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
+	// RevealAt is set on a "Buat Ulang" served from a spare take: the job is already completed, but
+	// customers see the usual progress steps until this time (see visibleJob).
+	RevealAt  *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Alternate is a spare take of a music request (table song_alternate), stored ready to become a song.
+type Alternate struct {
+	ID                 string
+	JobID              string // job whose music request produced the take
+	RootJobID          string // original job of that regenerate chain
+	SongID             string // id the song gets; the audio keys already live under it
+	FullAudioKey       string
+	PreviewAudioKey    string
+	DurationSec        int
+	PreviewDurationSec int
+	UsedByJobID        string // empty while free
+	UsedAt             *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // Song is the result of a completed job (table song).

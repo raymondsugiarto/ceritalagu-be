@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -162,5 +163,59 @@ func TestRegenerateLimits(t *testing.T) {
 		if _, err := f.svc.CreateJob(ctx, f.v, song.CreateSongJobInput{QuestionnaireID: f.qID}); err != nil {
 			t.Fatalf("new song after regenerations: %v", err)
 		}
+	}
+}
+
+func TestRegenerateUsesSpareTakeWithoutCallingAI(t *testing.T) {
+	t.Parallel()
+	f := newFixture()
+	f.svc = song.NewService(f.repo, ownedAnswers{f.qID: f.v.SessionID}, f.queue, fakeAudio{},
+		song.Limits{GuestDailyQuota: 3, MaxRegenerate: 2, SpareReveal: 80 * time.Millisecond})
+	ctx := context.Background()
+	first, err := f.svc.CreateJob(ctx, f.v, song.CreateSongJobInput{QuestionnaireID: f.qID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := f.repo.finish(first.ID, false)
+	spare := f.repo.addSpare(first.ID)
+
+	out, err := f.svc.Regenerate(ctx, f.v, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.queue.ids) != 1 {
+		t.Fatalf("spare take must not enqueue a new generation, queue = %v", f.queue.ids)
+	}
+	if out.Status.IsFinal() || out.SongID != "" || out.FinishedAt != nil || out.RegeneratesLeft != 1 {
+		t.Fatalf("must look in progress right after Buat Ulang: %+v", out)
+	}
+	// Still revealing: a second Buat Ulang is refused like for a running job.
+	if _, err := f.svc.Regenerate(ctx, f.v, out.ID); status(err) != http.StatusConflict {
+		t.Fatalf("regenerate while revealing: want 409, got %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	done, err := f.svc.GetJob(ctx, f.v, out.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.Status != song.JobCompleted || done.SongID != spare.SongID || done.FinishedAt == nil {
+		t.Fatalf("after reveal: %+v", done)
+	}
+	sg, err := f.svc.GetSong(ctx, f.v, spare.SongID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sg.Title != orig.Title || sg.DurationSec != 170 || sg.IsUnlocked {
+		t.Fatalf("song from spare: %+v", sg)
+	}
+
+	// The spare is used up: the next Buat Ulang generates a new song.
+	again, err := f.svc.Regenerate(ctx, f.v, out.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Status != song.JobQueued || len(f.queue.ids) != 2 || again.RegeneratesLeft != 0 {
+		t.Fatalf("second regenerate should enqueue: %+v queue=%v", again, f.queue.ids)
 	}
 }

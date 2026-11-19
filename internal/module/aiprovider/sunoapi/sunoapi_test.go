@@ -102,6 +102,10 @@ func TestGenerateMusicSuccess(t *testing.T) {
 	if string(res.Audio) != "ID3abc" || res.Format != "mp3" || res.DurationSec != 185 {
 		t.Fatalf("unexpected result %+v", res)
 	}
+	// Suno's second take comes back as the spare for "Buat Ulang".
+	if res.Alternate == nil || string(res.Alternate.Audio) != "ID3abc" || res.Alternate.Format != "mp3" {
+		t.Fatalf("second take not downloaded: %+v", res.Alternate)
+	}
 	b := f.submitBody
 	checks := map[string]any{
 		"prompt": "[Verse]\nhalo", "style": "pop, warm", "title": "Untuk Ibu", "customMode": true,
@@ -130,8 +134,12 @@ func TestVocalGenderParamOverrides(t *testing.T) {
 		final: `{"code":200,"msg":"success","data":{"status":"SUCCESS","response":{"sunoData":[{"audioUrl":"{AUDIO}"}]}}}`}
 	cfg := f.start()
 	cfg.Params = map[string]any{"vocal_gender": "male", "callback_url": "https://example.test/cb"}
-	if _, err := adapter().GenerateMusic(context.Background(), song, cfg); err != nil {
+	res, err := adapter().GenerateMusic(context.Background(), song, cfg)
+	if err != nil {
 		t.Fatalf("GenerateMusic: %v", err)
+	}
+	if res.Alternate != nil {
+		t.Fatalf("one take only, want no spare, got %+v", res.Alternate)
 	}
 	if f.submitBody["vocalGender"] != "m" || f.submitBody["callBackUrl"] != "https://example.test/cb" {
 		t.Fatalf("submit body %v", f.submitBody)

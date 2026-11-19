@@ -14,6 +14,10 @@ import (
 var (
 	ErrJobNotFound  = errors.New("song job not found")
 	ErrSongNotFound = errors.New("song not found")
+	// ErrAlternateNotFound means the chain has no free spare take.
+	ErrAlternateNotFound = errors.New("song alternate not found")
+	// ErrAlternateTaken means another regenerate claimed the spare first.
+	ErrAlternateTaken = errors.New("song alternate already used")
 )
 
 // jobModel maps table song_job (docs/database-standards.md: dumb store, rules live here).
@@ -34,6 +38,7 @@ type jobModel struct {
 	Timings                map[string]int64 `gorm:"column:timings;serializer:json"`
 	StartedAt              *time.Time       `gorm:"column:started_at"`
 	FinishedAt             *time.Time       `gorm:"column:finished_at"`
+	RevealAt               *time.Time       `gorm:"column:reveal_at"`
 	CreatedAt              time.Time        `gorm:"column:created_at"`
 	UpdatedAt              time.Time        `gorm:"column:updated_at"`
 	DeletedAt              gorm.DeletedAt   `gorm:"column:deleted_at"`
@@ -68,6 +73,101 @@ type songModel struct {
 }
 
 func (songModel) TableName() string { return "song" }
+
+// alternateModel maps table song_alternate.
+type alternateModel struct {
+	ID                 string         `gorm:"column:id;primaryKey"`
+	SongJobID          string         `gorm:"column:song_job_id"`
+	RootJobID          string         `gorm:"column:root_job_id"`
+	SongID             string         `gorm:"column:song_id"`
+	FullAudioKey       string         `gorm:"column:full_audio_key"`
+	PreviewAudioKey    string         `gorm:"column:preview_audio_key"`
+	DurationSec        int            `gorm:"column:duration_sec"`
+	PreviewDurationSec int            `gorm:"column:preview_duration_sec"`
+	UsedByJobID        *string        `gorm:"column:used_by_job_id"`
+	UsedAt             *time.Time     `gorm:"column:used_at"`
+	CreatedAt          time.Time      `gorm:"column:created_at"`
+	UpdatedAt          time.Time      `gorm:"column:updated_at"`
+	DeletedAt          gorm.DeletedAt `gorm:"column:deleted_at"`
+}
+
+func (alternateModel) TableName() string { return "song_alternate" }
+
+func (m alternateModel) toAlternate() Alternate {
+	a := Alternate{
+		ID: m.ID, JobID: m.SongJobID, RootJobID: m.RootJobID, SongID: m.SongID,
+		FullAudioKey: m.FullAudioKey, PreviewAudioKey: m.PreviewAudioKey, DurationSec: m.DurationSec,
+		PreviewDurationSec: m.PreviewDurationSec, UsedAt: m.UsedAt, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+	}
+	if m.UsedByJobID != nil {
+		a.UsedByJobID = *m.UsedByJobID
+	}
+	return a
+}
+
+// CreateAlternate stores a spare take, minting its ID if empty.
+func (r *GormRepository) CreateAlternate(ctx context.Context, a Alternate) error {
+	if a.ID == "" {
+		a.ID = uuid.NewString()
+	}
+	now := time.Now().UTC()
+	m := alternateModel{
+		ID: a.ID, SongJobID: a.JobID, RootJobID: a.RootJobID, SongID: a.SongID,
+		FullAudioKey: a.FullAudioKey, PreviewAudioKey: a.PreviewAudioKey, DurationSec: a.DurationSec,
+		PreviewDurationSec: a.PreviewDurationSec, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+		return fmt.Errorf("insert song_alternate: %w", err)
+	}
+	return nil
+}
+
+// FreeAlternate returns the oldest unused spare take of the chain rootJobID, or ErrAlternateNotFound.
+func (r *GormRepository) FreeAlternate(ctx context.Context, rootJobID string) (Alternate, error) {
+	var m alternateModel
+	err := r.db.WithContext(ctx).Where("root_job_id = ? AND used_by_job_id IS NULL", rootJobID).
+		Order("created_at ASC").First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Alternate{}, ErrAlternateNotFound
+	}
+	if err != nil {
+		return Alternate{}, fmt.Errorf("select free song_alternate of %s: %w", rootJobID, err)
+	}
+	return m.toAlternate(), nil
+}
+
+// CreateJobFromAlternate inserts the regenerate job j and its song s, and marks alternateID used by
+// j, in one transaction. It mints j.ID if empty and sets s.JobID. ErrAlternateTaken means another
+// request claimed the spare first; nothing is written then.
+func (r *GormRepository) CreateJobFromAlternate(ctx context.Context, j Job, s Song, alternateID string) (Job, error) {
+	if j.ID == "" {
+		j.ID = uuid.NewString()
+	}
+	now := time.Now().UTC()
+	j.CreatedAt, j.UpdatedAt = now, now
+	s.JobID = j.ID
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&alternateModel{}).Where("id = ? AND used_by_job_id IS NULL", alternateID).
+			Updates(map[string]any{"used_by_job_id": j.ID, "used_at": now, "updated_at": now})
+		if res.Error != nil {
+			return fmt.Errorf("claim song_alternate %s: %w", alternateID, res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrAlternateTaken
+		}
+		if err := tx.Create(toJobModel(j)).Error; err != nil {
+			return fmt.Errorf("insert song_job: %w", err)
+		}
+		if err := tx.Create(toSongModel(s)).Error; err != nil {
+			return fmt.Errorf("insert song: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Job{}, err
+	}
+	return j, nil
+}
 
 // GormRepository stores jobs and songs in PostgreSQL. Soft-deleted rows are skipped by GORM.
 type GormRepository struct {
@@ -144,7 +244,7 @@ func toJobModel(j Job) *jobModel {
 		LyricsProviderSnapshot: j.LyricsProviderSnapshot, MusicProviderSnapshot: j.MusicProviderSnapshot,
 		PromptTemplateID: j.PromptTemplateID, LyricsStyleOutput: j.LyricsStyleOutput,
 		ErrorCode: j.ErrorCode, ErrorMessage: j.ErrorMessage, Timings: j.Timings,
-		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
+		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt, RevealAt: j.RevealAt, CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
 	}
 }
 
@@ -155,7 +255,7 @@ func (m jobModel) toJob() Job {
 		LyricsProviderSnapshot: m.LyricsProviderSnapshot, MusicProviderSnapshot: m.MusicProviderSnapshot,
 		PromptTemplateID: m.PromptTemplateID, LyricsStyleOutput: m.LyricsStyleOutput,
 		ErrorCode: m.ErrorCode, ErrorMessage: m.ErrorMessage, Timings: m.Timings,
-		StartedAt: m.StartedAt, FinishedAt: m.FinishedAt, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		StartedAt: m.StartedAt, FinishedAt: m.FinishedAt, RevealAt: m.RevealAt, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
 	}
 }
 

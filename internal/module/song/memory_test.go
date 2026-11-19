@@ -19,11 +19,52 @@ type memRepo struct {
 	mu    sync.Mutex
 	jobs  map[string]song.Job
 	songs map[string]song.Song
+	alts  map[string]song.Alternate
 	ipOf  map[string]string // guest session -> ip hash
 }
 
 func newMemRepo() *memRepo {
-	return &memRepo{jobs: map[string]song.Job{}, songs: map[string]song.Song{}, ipOf: map[string]string{}}
+	return &memRepo{jobs: map[string]song.Job{}, songs: map[string]song.Song{}, alts: map[string]song.Alternate{},
+		ipOf: map[string]string{}}
+}
+
+func (r *memRepo) FreeAlternate(_ context.Context, root string) (song.Alternate, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range r.alts {
+		if a.RootJobID == root && a.UsedByJobID == "" {
+			return a, nil
+		}
+	}
+	return song.Alternate{}, song.ErrAlternateNotFound
+}
+
+func (r *memRepo) CreateJobFromAlternate(_ context.Context, j song.Job, s song.Song, altID string) (song.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	a, ok := r.alts[altID]
+	if !ok || a.UsedByJobID != "" {
+		return song.Job{}, song.ErrAlternateTaken
+	}
+	j.ID, j.CreatedAt = uuid.NewString(), time.Now().UTC()
+	s.JobID = j.ID
+	a.UsedByJobID = j.ID
+	r.alts[altID], r.jobs[j.ID], r.songs[s.ID] = a, j, s
+	return j, nil
+}
+
+// addSpare stores a free spare take made by jobID.
+func (r *memRepo) addSpare(jobID string) song.Alternate {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	root := jobID
+	if j := r.jobs[jobID]; j.RegenerateOfJobID != "" {
+		root = j.RegenerateOfJobID
+	}
+	a := song.Alternate{ID: uuid.NewString(), JobID: jobID, RootJobID: root, SongID: uuid.NewString(),
+		FullAudioKey: "songs/alt/full.mp3", PreviewAudioKey: "songs/alt/preview.mp3", DurationSec: 170, PreviewDurationSec: 70}
+	r.alts[a.ID] = a
+	return a
 }
 
 func (r *memRepo) CreateJob(_ context.Context, j song.Job) (song.Job, error) {

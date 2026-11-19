@@ -15,4 +15,7 @@ type GenerationConfig struct {
 	FFmpegPath      string        `mapstructure:"ffmpegPath"`      // empty = ffmpeg from PATH
 	GuestDailyQuota int           `mapstructure:"guestDailyQuota"` // PRD: 3 new songs per guest/IP per day
 	MaxRegenerate   int           `mapstructure:"maxRegenerate"`   // PRD: 2 "Buat Ulang" per song
+	// SpareReveal: a "Buat Ulang" served from the music AI's spare take shows the loading steps
+	// this long before the song appears. 0 = 90s.
+	SpareReveal time.Duration `mapstructure:"spareReveal"`
 }

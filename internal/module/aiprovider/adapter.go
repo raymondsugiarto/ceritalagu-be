@@ -54,6 +54,17 @@ type MusicResult struct {
 	// Words are the sung lyrics with timestamps, when the provider returns them (Suno does).
 	// The preview is cut at the end of the first chorus using them; empty means "estimate".
 	Words []AlignedWord
+	// Alternate is a second take of the same lyrics from the same request, when the provider makes
+	// one (Suno always returns two). It is kept as a spare for "Buat Ulang". Nil when there is none.
+	Alternate *MusicTrack
+}
+
+// MusicTrack is one extra take returned alongside the main MusicResult.
+type MusicTrack struct {
+	Audio       []byte
+	Format      string
+	DurationSec int
+	Words       []AlignedWord
 }
 
 // AlignedWord is one sung word and where it sits in the audio. Text may carry a section tag

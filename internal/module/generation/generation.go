@@ -21,6 +21,8 @@ type Jobs interface {
 	GetJob(ctx context.Context, id string) (song.Job, error)
 	UpdateJob(ctx context.Context, job song.Job) error
 	CreateSong(ctx context.Context, s song.Song) error
+	// CreateAlternate stores a spare take for a later "Buat Ulang".
+	CreateAlternate(ctx context.Context, a song.Alternate) error
 }
 
 // Questionnaires loads submitted answers.

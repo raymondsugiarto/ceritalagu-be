@@ -11,3 +11,4 @@ generation:
   ffmpegPath:
   guestDailyQuota: 3
   maxRegenerate: 2
+  spareReveal: 90s # "Buat Ulang" from the spare Suno take: fake loading time before the song shows

@@ -129,7 +129,8 @@ func serve(ctx context.Context) error {
 	masterSvc := masterdata.NewService(masterdata.NewGormRepository(gdb), audit.NewGormRecorder(gdb))
 	questionnaireSvc := questionnaire.NewService(questionnaire.NewGormRepository(gdb), guest.NewGormRepository(gdb), masterSvc, userSvc)
 	songSvc := song.NewService(song.NewGormRepository(gdb), questionnaireSvc, enqueuer,
-		store, song.Limits{GuestDailyQuota: gen.GuestDailyQuota, MaxRegenerate: gen.MaxRegenerate})
+		store, song.Limits{GuestDailyQuota: gen.GuestDailyQuota, MaxRegenerate: gen.MaxRegenerate,
+			SpareReveal: gen.SpareReveal})
 
 	// Payments stay off (checkout answers 503) until the DOKU credentials are configured.
 	var gateway payment.Gateway

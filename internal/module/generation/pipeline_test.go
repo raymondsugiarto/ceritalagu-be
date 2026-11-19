@@ -23,6 +23,12 @@ type fakeJobs struct {
 	job      song.Job
 	statuses []song.JobStatus
 	songs    []song.Song
+	alts     []song.Alternate
+}
+
+func (f *fakeJobs) CreateAlternate(_ context.Context, a song.Alternate) error {
+	f.alts = append(f.alts, a)
+	return nil
 }
 
 func (f *fakeJobs) GetJob(_ context.Context, _ string) (song.Job, error) { return f.job, nil }
@@ -83,6 +89,7 @@ func (f *fakeLyrics) TestConnection(context.Context, aiprovider.Config) error { 
 type fakeMusic struct {
 	err error
 	got aiprovider.MusicRequest
+	alt *aiprovider.MusicTrack
 }
 
 func (f *fakeMusic) GenerateMusic(_ context.Context, req aiprovider.MusicRequest, _ aiprovider.Config) (aiprovider.MusicResult, error) {
@@ -90,7 +97,7 @@ func (f *fakeMusic) GenerateMusic(_ context.Context, req aiprovider.MusicRequest
 	if f.err != nil {
 		return aiprovider.MusicResult{}, f.err
 	}
-	return aiprovider.MusicResult{Audio: []byte("FULL"), Format: "mp3", DurationSec: 150}, nil
+	return aiprovider.MusicResult{Audio: []byte("FULL"), Format: "mp3", DurationSec: 150, Alternate: f.alt}, nil
 }
 func (f *fakeMusic) TestConnection(context.Context, aiprovider.Config) error { return nil }
 
@@ -324,4 +331,40 @@ func toString(m map[string]any) string {
 		}
 	}
 	return b.String()
+}
+
+func TestRunStoresSpareTake(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, questionnaire.VoiceSurprise, "user-1", fakeProviders{})
+	h.jobs.job.RegenerateOfJobID = "root-job"
+	ids := []string{"song-1", "song-2"}
+	h.p.newID = func() string { id := ids[0]; ids = ids[1:]; return id }
+	h.music.alt = &aiprovider.MusicTrack{Audio: []byte("ALT"), Format: "mp3", DurationSec: 140}
+	if err := h.p.Run(context.Background(), "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.jobs.songs) != 1 || len(h.jobs.alts) != 1 {
+		t.Fatalf("want 1 song + 1 spare, got %d + %d", len(h.jobs.songs), len(h.jobs.alts))
+	}
+	a := h.jobs.alts[0]
+	if a.SongID != "song-2" || a.JobID != "job-1" || a.RootJobID != "root-job" || a.DurationSec != 140 {
+		t.Fatalf("spare: %+v", a)
+	}
+	if a.FullAudioKey != "users/user-1/songs/song-2/full.mp3" || string(h.store.files[a.FullAudioKey]) != "ALT" {
+		t.Fatalf("spare full audio not stored: %s %v", a.FullAudioKey, h.store.files)
+	}
+	if !strings.HasPrefix(string(h.store.files[a.PreviewAudioKey]), "PREVIEW") || a.PreviewDurationSec <= 0 {
+		t.Fatalf("spare preview not stored: %+v", a)
+	}
+}
+
+func TestRunWithoutSpareTake(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, questionnaire.VoiceSurprise, "", fakeProviders{})
+	if err := h.p.Run(context.Background(), "job-1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.jobs.alts) != 0 {
+		t.Fatalf("no second take, want no spare, got %d", len(h.jobs.alts))
+	}
 }

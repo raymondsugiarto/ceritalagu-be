@@ -2,8 +2,9 @@
 // Flow (docs.sunoapi.org, read 2026-11-15):
 //  1. POST /api/v1/generate                         -> {"code":200,"msg":"success","data":{"taskId":"..."}}
 //  2. GET  /api/v1/generate/record-info?taskId=...  -> poll until data.status is SUCCESS or a failure state
-//  3. GET  data.response.sunoData[0].audio_url      -> the audio file (no API key is sent to that host)
-//  4. POST /api/v1/generate/get-timestamped-lyrics  {taskId, audioId} -> data.alignedWords (best effort:
+//  3. GET  data.response.sunoData[i].audio_url      -> the audio files (no API key is sent to that host).
+//     Suno makes two takes per request: [0] is the song, [1] is kept as a spare for "Buat Ulang".
+//  4. POST /api/v1/generate/get-timestamped-lyrics  {taskId, audioId} -> data.alignedWords per take (best effort:
 //     the preview is cut at the end of the first chorus with them; a failure only loses the timestamps)
 //
 // Auth is "Authorization: Bearer <key>". Errors come back as a "code" in the JSON body (the HTTP
@@ -172,7 +173,8 @@ func NewMusicAdapter(h *http.Client) *MusicAdapter {
 
 var _ aiprovider.MusicProvider = (*MusicAdapter)(nil)
 
-// GenerateMusic submits a custom-mode, vocal Suno job and returns the first of the two tracks.
+// GenerateMusic submits a custom-mode, vocal Suno job. Suno makes two takes per request: the first
+// is the result, the second (best effort) is returned as Alternate, a spare for "Buat Ulang".
 func (a *MusicAdapter) GenerateMusic(ctx context.Context, req aiprovider.MusicRequest, cfg aiprovider.Config) (aiprovider.MusicResult, error) {
 	in, err := buildRequest(req, cfg)
 	if err != nil {
@@ -193,16 +195,32 @@ func (a *MusicAdapter) GenerateMusic(ctx context.Context, req aiprovider.MusicRe
 		return aiprovider.MusicResult{}, &aiprovider.Error{Kind: aiprovider.KindInvalidOutput, Provider: providerName, Message: "no taskId in generate response"}
 	}
 
-	t, err := a.poll(ctx, cfg, created.TaskID)
+	tracks, err := a.poll(ctx, cfg, created.TaskID)
 	if err != nil {
 		return aiprovider.MusicResult{}, err
 	}
+	t := tracks[0]
 	audio, format, err := a.download(ctx, t.audioURL())
 	if err != nil {
 		return aiprovider.MusicResult{}, err
 	}
-	return aiprovider.MusicResult{Audio: audio, Format: format, DurationSec: int(math.Round(t.Duration)),
-		Words: a.words(ctx, cfg, created.TaskID, t.ID)}, nil
+	res := aiprovider.MusicResult{Audio: audio, Format: format, DurationSec: int(math.Round(t.Duration)),
+		Words: a.words(ctx, cfg, created.TaskID, t.ID)}
+	if len(tracks) > 1 {
+		res.Alternate = a.alternate(ctx, cfg, created.TaskID, tracks[1])
+	}
+	return res, nil
+}
+
+// alternate downloads the second take. A failure only loses the spare, so it is logged and nil returned.
+func (a *MusicAdapter) alternate(ctx context.Context, cfg aiprovider.Config, taskID string, t track) *aiprovider.MusicTrack {
+	audio, format, err := a.download(ctx, t.audioURL())
+	if err != nil {
+		slog.WarnContext(ctx, "sunoapi second track download failed", "provider", providerName, "task_id", taskID, "audio_id", t.ID, "err", err)
+		return nil
+	}
+	return &aiprovider.MusicTrack{Audio: audio, Format: format, DurationSec: int(math.Round(t.Duration)),
+		Words: a.words(ctx, cfg, taskID, t.ID)}
 }
 
 type timestampRequest struct {
@@ -310,8 +328,8 @@ func styleLimit(model string) int {
 	return 1000
 }
 
-// poll waits for SUCCESS and returns the first track with an audio URL.
-func (a *MusicAdapter) poll(ctx context.Context, cfg aiprovider.Config, taskID string) (track, error) {
+// poll waits for SUCCESS and returns the tracks that have an audio URL (at least one).
+func (a *MusicAdapter) poll(ctx context.Context, cfg aiprovider.Config, taskID string) ([]track, error) {
 	interval := a.PollInterval
 	if s := intParam(cfg.Params, "poll_interval_sec", 0); s > 0 {
 		interval = time.Duration(s) * time.Second
@@ -320,26 +338,20 @@ func (a *MusicAdapter) poll(ctx context.Context, cfg aiprovider.Config, taskID s
 	for {
 		var rec recordData
 		if err := a.do(ctx, cfg, http.MethodGet, p, nil, &rec); err != nil {
-			return track{}, err
+			return nil, err
 		}
 		status := strings.ToUpper(strings.TrimSpace(rec.Status))
 		switch status {
 		case "SUCCESS":
-			if rec.Response != nil {
-				for _, t := range rec.Response.SunoData {
-					if t.audioURL() != "" {
-						return t, nil
-					}
-				}
+			if ts := rec.withAudio(); len(ts) > 0 {
+				return ts, nil
 			}
-			return track{}, &aiprovider.Error{Kind: aiprovider.KindInvalidOutput, Provider: providerName, Message: "SUCCESS without audio (task " + taskID + ")"}
+			return nil, &aiprovider.Error{Kind: aiprovider.KindInvalidOutput, Provider: providerName, Message: "SUCCESS without audio (task " + taskID + ")"}
 		case "CREATE_TASK_FAILED", "GENERATE_AUDIO_FAILED", "SENSITIVE_WORD_ERROR", "CALLBACK_EXCEPTION", "FAILED":
 			// CALLBACK_EXCEPTION only means our callback was unreachable; if audio exists, use it.
-			if status == "CALLBACK_EXCEPTION" && rec.Response != nil {
-				for _, t := range rec.Response.SunoData {
-					if t.audioURL() != "" {
-						return t, nil
-					}
+			if status == "CALLBACK_EXCEPTION" {
+				if ts := rec.withAudio(); len(ts) > 0 {
+					return ts, nil
 				}
 			}
 			msg := status
@@ -349,16 +361,30 @@ func (a *MusicAdapter) poll(ctx context.Context, cfg aiprovider.Config, taskID s
 			if rec.ErrorCode != nil {
 				msg += fmt.Sprintf(" (code %d)", *rec.ErrorCode)
 			}
-			return track{}, &aiprovider.Error{Kind: failureKind(status, msg), Provider: providerName, Message: msg + " (task " + taskID + ")"}
+			return nil, &aiprovider.Error{Kind: failureKind(status, msg), Provider: providerName, Message: msg + " (task " + taskID + ")"}
 		}
 		// PENDING, TEXT_SUCCESS, FIRST_SUCCESS: keep waiting for the full tracks.
 		select {
 		case <-ctx.Done():
-			return track{}, &aiprovider.Error{Kind: aiprovider.KindTimeout, Provider: providerName,
+			return nil, &aiprovider.Error{Kind: aiprovider.KindTimeout, Provider: providerName,
 				Message: "job not finished in time (task " + taskID + ", last status " + rec.Status + ")", Err: ctx.Err()}
 		case <-time.After(interval):
 		}
 	}
+}
+
+// withAudio returns the finished tracks that have an audio URL, in the order sunoapi.org lists them.
+func (r recordData) withAudio() []track {
+	if r.Response == nil {
+		return nil
+	}
+	var out []track
+	for _, t := range r.Response.SunoData {
+		if t.audioURL() != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // download fetches the output file from sunoapi.org's CDN; no API key is sent.
