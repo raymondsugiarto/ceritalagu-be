@@ -5,3 +5,10 @@ notification:
   attachFullAudio: false      # NOTIFICATION_ATTACHFULLAUDIO
   maxAttachmentMB: 3          # NOTIFICATION_MAXATTACHMENTMB (raw bytes; the base64 payload is ~33% larger)
   siteUrl:                    # NOTIFICATION_SITEURL (link to the song page in the email)
+  # "Payment succeeded" email, sent by the API once an order is paid (only once per order).
+  # brevoTemplateId: id of the template pasted from docs/email-templates/payment-success.html.
+  # 0 sends a plain built-in email (also what the log driver prints).
+  paymentReceipt:
+    enabled: false            # NOTIFICATION_PAYMENTRECEIPT_ENABLED
+    brevoTemplateId: 0        # NOTIFICATION_PAYMENTRECEIPT_BREVOTEMPLATEID
+    attachFullAudio: false    # NOTIFICATION_PAYMENTRECEIPT_ATTACHFULLAUDIO (needs maxAttachmentMB room)

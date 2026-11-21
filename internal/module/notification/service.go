@@ -53,15 +53,38 @@ func (s *Service) SongReady(ctx context.Context, sg song.Song) error {
 	if !s.opts.Enabled {
 		return nil
 	}
-	if sg.OwnerUserID == "" {
-		return fmt.Errorf("%w: song %s", ErrNoRecipient, sg.ID)
+	_, err := s.deliver(ctx, sg, "")
+	return err
+}
+
+// Sent describes an email that went out (admin resend).
+type Sent struct {
+	To         string `json:"to"`
+	TemplateID int64  `json:"template_id,omitempty"`
+	Attached   bool   `json:"attached"`
+}
+
+// ResendSongReady sends the song-ready email again, even when the automatic email is off.
+// to overrides the recipient (a test inbox); empty sends to the song owner.
+func (s *Service) ResendSongReady(ctx context.Context, sg song.Song, to string) (Sent, error) {
+	return s.deliver(ctx, sg, to)
+}
+
+// deliver builds and sends the song-ready email. to, when set, replaces the owner's address.
+func (s *Service) deliver(ctx context.Context, sg song.Song, to string) (Sent, error) {
+	var u user.User
+	if sg.OwnerUserID != "" {
+		got, err := s.users.GetByID(ctx, sg.OwnerUserID)
+		if err != nil && to == "" {
+			return Sent{}, fmt.Errorf("load song owner %s: %w", sg.OwnerUserID, err)
+		}
+		u = got
 	}
-	u, err := s.users.GetByID(ctx, sg.OwnerUserID)
-	if err != nil {
-		return fmt.Errorf("load song owner %s: %w", sg.OwnerUserID, err)
+	if to == "" {
+		to = u.Email
 	}
-	if u.Email == "" {
-		return fmt.Errorf("%w: song %s", ErrNoRecipient, sg.ID)
+	if to == "" {
+		return Sent{}, fmt.Errorf("%w: song %s", ErrNoRecipient, sg.ID)
 	}
 
 	key := sg.PreviewAudioKey
@@ -85,17 +108,17 @@ func (s *Service) SongReady(ctx context.Context, sg song.Song) error {
 	}
 
 	msg := mail.Message{
-		To:      u.Email,
+		To:      to,
 		Subject: subject(sg),
 		Text:    s.body(sg, u),
 		HTML:    s.html(sg, u),
 		Files:   files,
 	}
 	if err := s.sender.Send(ctx, msg); err != nil {
-		return fmt.Errorf("send song-ready email to %s: %w", u.Email, err)
+		return Sent{}, fmt.Errorf("send song-ready email to %s: %w", to, err)
 	}
-	s.log.Info("song-ready email sent", "song_id", sg.ID, "to", u.Email, "attached", len(files) > 0)
-	return nil
+	s.log.Info("song-ready email sent", "song_id", sg.ID, "to", to, "attached", len(files) > 0)
+	return Sent{To: to, Attached: len(files) > 0}, nil
 }
 
 // subject is the email subject line.

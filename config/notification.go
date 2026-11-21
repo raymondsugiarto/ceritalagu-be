@@ -13,4 +13,15 @@ type NotificationConfig struct {
 	MaxAttachmentMB int `mapstructure:"maxAttachmentMB"` // NOTIFICATION_MAXATTACHMENTMB
 	// SiteURL is the public site, used to build the link in the email.
 	SiteURL string `mapstructure:"siteUrl"` // NOTIFICATION_SITEURL
+	// PaymentReceipt is the "payment succeeded" email, sent by the API when an order is paid.
+	PaymentReceipt PaymentReceiptConfig `mapstructure:"paymentReceipt"`
+}
+
+// PaymentReceiptConfig is notification.yml → paymentReceipt.
+type PaymentReceiptConfig struct {
+	Enabled bool `mapstructure:"enabled"` // NOTIFICATION_PAYMENTRECEIPT_ENABLED
+	// BrevoTemplateID is the Brevo template to send (0 = built-in plain email).
+	BrevoTemplateID int64 `mapstructure:"brevoTemplateId"` // NOTIFICATION_PAYMENTRECEIPT_BREVOTEMPLATEID
+	// AttachFullAudio attaches the full MP3 when it fits under notification.maxAttachmentMB.
+	AttachFullAudio bool `mapstructure:"attachFullAudio"` // NOTIFICATION_PAYMENTRECEIPT_ATTACHFULLAUDIO
 }

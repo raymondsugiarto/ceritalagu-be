@@ -198,7 +198,7 @@ func TestPlaygroundRendersAndRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ft.got.UserPrompt != "Nadia likes Pop (bright pop)" || ft.got.SystemPrompt != "Lang Bahasa Indonesia {{oops}}" {
+	if ft.got.UserPrompt != "Nadia likes Pop (bright pop)" || ft.got.SystemPrompt != "Lang Bahasa Indonesia {{oops}}"+SafetyRules {
 		t.Fatalf("rendered request: %+v", ft.got)
 	}
 	if !out.OK || out.Result == nil || out.Result.Title != "Untuk Nadia" || out.Provider != "MiniMax" {

@@ -49,6 +49,9 @@ func NewService(repo Repository, guests GuestSessions, options Options, users Us
 // Create stores submitted answers for the visitor's guest session.
 func (s *Service) Create(ctx context.Context, v guest.Visitor, in CreateQuestionnaireInput) (QuestionnaireOutput, error) {
 	a := in.toAnswers()
+	if err := screenAnswers(ctx, v, a); err != nil {
+		return QuestionnaireOutput{}, err
+	}
 	if err := s.checkOptions(ctx, &a); err != nil {
 		return QuestionnaireOutput{}, err
 	}

@@ -49,6 +49,9 @@ const (
 	ReasonInvalidChoice     = "invalid_choice"
 	ReasonInvalidFormat     = "invalid_format"
 	ReasonOptionUnavailable = "option_unavailable"
+	// ReasonInputNotAllowed: free text asks about the AI/technology, tries to command the system
+	// (remove files, run code, override the AI's instructions) or carries harmful content.
+	ReasonInputNotAllowed = "input_not_allowed"
 
 	// Contact form.
 	ReasonContactFieldsMissing = "contact_fields_missing"

@@ -31,6 +31,8 @@ const (
 type AdminSong struct {
 	Song
 	UserEmail string
+	// Alternate is the spare take made by the same music request (Suno returns two); nil when none.
+	Alternate *Alternate
 }
 
 // AdminSongParams is the repository query of the admin song list.
@@ -70,7 +72,22 @@ type AdminSongOutput struct {
 	ExpiresAt          *time.Time `json:"expires_at"`
 	PreviewURL         string     `json:"preview_url"`
 	AudioURL           string     `json:"audio_url"`
-	CreatedAt          time.Time  `json:"created_at"`
+	// Alternate is the second take of the same request; null when the provider made none.
+	Alternate *AdminAlternateOutput `json:"alternate"`
+	CreatedAt time.Time             `json:"created_at"`
+}
+
+// AdminAlternateOutput is the spare take shown next to a song in the admin library.
+type AdminAlternateOutput struct {
+	ID                 string `json:"id"`
+	DurationSec        int    `json:"duration_sec"`
+	PreviewDurationSec int    `json:"preview_duration_sec"`
+	// UsedByJobID is the "Buat Ulang" job that turned the take into a song; empty while still spare.
+	UsedByJobID string `json:"used_by_job_id,omitempty"`
+	// UsedSongID is the song it became (song_alternate.song_id), set only when used.
+	UsedSongID string `json:"used_song_id,omitempty"`
+	PreviewURL string `json:"preview_url"`
+	AudioURL   string `json:"audio_url"`
 }
 
 // SongStatsOutput counts songs for the library's summary cards.
@@ -86,6 +103,8 @@ type AdminSongRepository interface {
 	CountSongs(ctx context.Context) (SongStatsOutput, error)
 	GetSong(ctx context.Context, id string) (Song, error)
 	SongAnswers(ctx context.Context, id string) (AdminSongAnswersOutput, error)
+	// SongAlternate returns the spare take made by song id's music request, or ErrAlternateNotFound.
+	SongAlternate(ctx context.Context, id string) (Alternate, error)
 }
 
 // AdminSongService lists songs and serves their audio to admins.
@@ -157,6 +176,37 @@ func (s *AdminSongService) Audio(ctx context.Context, id string, full bool) ([]b
 	return data, sg, nil
 }
 
+// AlternateAudio returns the preview, or the full audio when full is true, of the spare take made
+// by song id's music request.
+func (s *AdminSongService) AlternateAudio(ctx context.Context, id string, full bool) ([]byte, Song, error) {
+	sg, err := s.repo.GetSong(ctx, id)
+	if errors.Is(err, ErrSongNotFound) {
+		return nil, Song{}, apperror.NotFound("Lagu tidak ditemukan.")
+	}
+	if err != nil {
+		return nil, Song{}, apperror.Internal(err)
+	}
+	alt, err := s.repo.SongAlternate(ctx, id)
+	if errors.Is(err, ErrAlternateNotFound) {
+		return nil, Song{}, apperror.NotFound("Lagu ini tidak punya take ke-2.")
+	}
+	if err != nil {
+		return nil, Song{}, apperror.Internal(err)
+	}
+	key := alt.PreviewAudioKey
+	if full {
+		key = alt.FullAudioKey
+	}
+	if key == "" {
+		return nil, Song{}, apperror.NotFound("File audio tidak tersedia.")
+	}
+	data, err := s.audio.Get(ctx, key)
+	if err != nil {
+		return nil, Song{}, apperror.Internal(err)
+	}
+	return data, sg, nil
+}
+
 func toAdminSongOutput(r AdminSong) AdminSongOutput {
 	base := "/api/v1/admin/songs/" + r.ID + "/audio"
 	return AdminSongOutput{
@@ -165,8 +215,24 @@ func toAdminSongOutput(r AdminSong) AdminSongOutput {
 		Mood: r.Mood, DurationSec: r.DurationSec, PreviewDurationSec: r.PreviewDurationSec,
 		UserID: r.OwnerUserID, UserEmail: r.UserEmail, GuestSessionID: r.GuestSessionID,
 		IsUnlocked: r.IsUnlocked, UnlockedAt: r.UnlockedAt, ExpiresAt: r.ExpiresAt,
-		PreviewURL: base, AudioURL: base + "?full=1", CreatedAt: r.CreatedAt,
+		PreviewURL: base, AudioURL: base + "?full=1", Alternate: toAdminAlternateOutput(r.ID, r.Alternate),
+		CreatedAt: r.CreatedAt,
 	}
+}
+
+func toAdminAlternateOutput(songID string, a *Alternate) *AdminAlternateOutput {
+	if a == nil {
+		return nil
+	}
+	base := "/api/v1/admin/songs/" + songID + "/alternate/audio"
+	out := &AdminAlternateOutput{
+		ID: a.ID, DurationSec: a.DurationSec, PreviewDurationSec: a.PreviewDurationSec,
+		UsedByJobID: a.UsedByJobID, PreviewURL: base, AudioURL: base + "?full=1",
+	}
+	if a.UsedByJobID != "" {
+		out.UsedSongID = a.SongID
+	}
+	return out
 }
 
 // AdminSongHandler serves /admin/songs.
@@ -186,12 +252,14 @@ func NewAdminSongHandler(svc *AdminSongService, auth fiber.Handler) *AdminSongHa
 //	GET /api/v1/admin/songs/stats       song counts
 //	GET /api/v1/admin/songs/:id/audio   preview audio; ?full=1 full song; &download=1 as attachment
 //	GET /api/v1/admin/songs/:id/answers questionnaire answers (steps 1-8) behind the song
+//	GET /api/v1/admin/songs/:id/alternate/audio  second take of the same request (same query as /audio)
 func (h *AdminSongHandler) RegisterRoutes(r fiber.Router) {
 	g := r.Group("/admin/songs", h.auth)
 	g.Get("/", h.list)
 	g.Get("/stats", h.stats)
 	g.Get("/:id/audio", h.audio)
 	g.Get("/:id/answers", h.answers)
+	g.Get("/:id/alternate/audio", h.alternateAudio)
 }
 
 func (h *AdminSongHandler) list(c fiber.Ctx) error {
@@ -224,6 +292,24 @@ func (h *AdminSongHandler) audio(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	return sendAdminAudio(c, data, sg.Title, full)
+}
+
+func (h *AdminSongHandler) alternateAudio(c fiber.Ctx) error {
+	id, err := pathID(c)
+	if err != nil {
+		return err
+	}
+	full := c.Query("full") != ""
+	data, sg, err := h.svc.AlternateAudio(c.Context(), id, full)
+	if err != nil {
+		return err
+	}
+	return sendAdminAudio(c, data, sg.Title+" (take 2)", full)
+}
+
+// sendAdminAudio writes an MP3, as an attachment named after title when ?download is set.
+func sendAdminAudio(c fiber.Ctx, data []byte, title string, full bool) error {
 	c.Set(fiber.HeaderContentType, "audio/mpeg")
 	c.Set(fiber.HeaderCacheControl, "private, max-age=3600")
 	if c.Query("download") != "" {
@@ -231,7 +317,7 @@ func (h *AdminSongHandler) audio(c fiber.Ctx) error {
 		if full {
 			suffix = ""
 		}
-		c.Set(fiber.HeaderContentDisposition, `attachment; filename="`+downloadName(sg.Title)+suffix+`.mp3"`)
+		c.Set(fiber.HeaderContentDisposition, `attachment; filename="`+downloadName(title)+suffix+`.mp3"`)
 	}
 	return c.Send(data)
 }
@@ -241,6 +327,11 @@ func (h *AdminSongHandler) audio(c fiber.Ctx) error {
 type adminSongRow struct {
 	Song      songModel `gorm:"embedded"`
 	UserEmail string    `gorm:"column:user_email"`
+	AltID     string    `gorm:"column:alt_id"`
+	AltSongID string    `gorm:"column:alt_song_id"`
+	AltDur    int       `gorm:"column:alt_duration_sec"`
+	AltPrev   int       `gorm:"column:alt_preview_duration_sec"`
+	AltUsedBy string    `gorm:"column:alt_used_by_job_id"`
 }
 
 // ListAdminSongs returns one page of live songs joined with their owner, newest first.
@@ -267,15 +358,47 @@ WHERE `
 		return nil, 0, fmt.Errorf("count admin songs: %w", err)
 	}
 	var rows []adminSongRow
-	q := "SELECT s.*, COALESCE(u.email, '') AS user_email" + from + cond + " ORDER BY s.created_at DESC LIMIT ? OFFSET ?"
+	// The spare take made by this song's own request (song_job_id), not the chain's other spares.
+	q := `SELECT s.*, COALESCE(u.email, '') AS user_email,
+       COALESCE(a.id, '') AS alt_id, COALESCE(a.song_id, '') AS alt_song_id,
+       COALESCE(a.duration_sec, 0) AS alt_duration_sec,
+       COALESCE(a.preview_duration_sec, 0) AS alt_preview_duration_sec,
+       COALESCE(a.used_by_job_id, '') AS alt_used_by_job_id` + strings.Replace(from, "WHERE", `LEFT JOIN LATERAL (
+    SELECT id, song_id, duration_sec, preview_duration_sec, used_by_job_id FROM song_alternate
+    WHERE song_job_id = s.song_job_id AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1
+) a ON TRUE
+WHERE`, 1) + cond + " ORDER BY s.created_at DESC LIMIT ? OFFSET ?"
 	if err := r.db.WithContext(ctx).Raw(q, append(args, p.Limit, p.Offset)...).Scan(&rows).Error; err != nil {
 		return nil, 0, fmt.Errorf("list admin songs: %w", err)
 	}
 	out := make([]AdminSong, 0, len(rows))
 	for _, m := range rows {
-		out = append(out, AdminSong{Song: m.Song.toSong(), UserEmail: m.UserEmail})
+		row := AdminSong{Song: m.Song.toSong(), UserEmail: m.UserEmail}
+		if m.AltID != "" {
+			row.Alternate = &Alternate{
+				ID: m.AltID, JobID: row.JobID, SongID: m.AltSongID, DurationSec: m.AltDur,
+				PreviewDurationSec: m.AltPrev, UsedByJobID: m.AltUsedBy,
+			}
+		}
+		out = append(out, row)
 	}
 	return out, total, nil
+}
+
+// SongAlternate returns the oldest spare take made by song id's music request.
+func (r *GormRepository) SongAlternate(ctx context.Context, id string) (Alternate, error) {
+	var rows []alternateModel
+	err := r.db.WithContext(ctx).Raw(`SELECT a.* FROM song_alternate a
+JOIN song s ON s.song_job_id = a.song_job_id
+WHERE s.id = ? AND s.deleted_at IS NULL AND a.deleted_at IS NULL
+ORDER BY a.created_at ASC LIMIT 1`, id).Scan(&rows).Error
+	if err != nil {
+		return Alternate{}, fmt.Errorf("select song_alternate of song %s: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return Alternate{}, ErrAlternateNotFound
+	}
+	return rows[0].toAlternate(), nil
 }
 
 // CountSongs counts live songs.

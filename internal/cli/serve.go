@@ -32,6 +32,7 @@ import (
 	"github.com/yourorg/music-api/internal/module/generation"
 	"github.com/yourorg/music-api/internal/module/guest"
 	"github.com/yourorg/music-api/internal/module/masterdata"
+	"github.com/yourorg/music-api/internal/module/notification"
 	"github.com/yourorg/music-api/internal/module/payment"
 	"github.com/yourorg/music-api/internal/module/payment/doku"
 	"github.com/yourorg/music-api/internal/module/playground"
@@ -145,6 +146,30 @@ func serve(ctx context.Context) error {
 		OrderTTL:      cfg.Payment.OrderTTL,
 		PublicBaseURL: cfg.Payment.PublicBaseURL, NotifyPath: cfg.Payment.Doku.NotifyPath,
 	}, log)
+	// Customer emails. The automatic payment receipt follows notification.paymentReceipt.enabled;
+	// the admin "Kirim email" button works either way (resend or test).
+	maxAttach := cfg.Notification.MaxAttachmentMB * 1024 * 1024
+	receiptCfg := cfg.Notification.PaymentReceipt
+	receiptSvc := notification.NewReceiptService(mailer, userRepo, song.NewGormRepository(gdb), store,
+		notification.ReceiptSetting{
+			Enabled:            receiptCfg.Enabled,
+			TemplateID:         receiptCfg.BrevoTemplateID,
+			AttachFullAudio:    receiptCfg.AttachFullAudio,
+			MaxAttachmentBytes: maxAttach,
+			SiteURL:            cfg.Notification.SiteURL,
+		}, log)
+	if receiptCfg.Enabled {
+		paymentSvc.WithReceipts(receiptSvc)
+	}
+	log.Info("payment receipt email", "enabled", receiptCfg.Enabled, "brevo_template_id", receiptCfg.BrevoTemplateID)
+	songReadySvc := notification.NewService(mailer, userRepo, store, notification.Setting{
+		Enabled:            cfg.Notification.Enabled,
+		AttachFullAudio:    cfg.Notification.AttachFullAudio,
+		MaxAttachmentBytes: maxAttach,
+		SiteURL:            cfg.Notification.SiteURL,
+	}, log)
+	adminEmailSvc := notification.NewAdminService(song.NewGormRepository(gdb), songReadySvc, receiptSvc,
+		payment.PaidOrders{Repo: payment.NewGormRepository(gdb)}, audit.NewGormRecorder(gdb), log)
 
 	srv := app.New(cfg, log, app.NewHealth(database.NewChecker(gdb), newRedisChecker(cfg.Redis)),
 		guest.NewMiddleware(cfg.Security.IPHashSalt, cfg.Security.CookieSecure), // first: every route below needs the visitor
@@ -154,6 +179,7 @@ func serve(ctx context.Context) error {
 		contact.NewHandler(contact.NewService(mailer, cfg.Mail.ContactInbox(), log)),
 		song.NewAdminHandler(song.NewAdminService(song.NewGormRepository(gdb)), guard.Require(admin.RoleSuperAdmin)),
 		song.NewAdminSongHandler(song.NewAdminSongService(song.NewGormRepository(gdb), store), guard.Require(admin.RoleSuperAdmin)),
+		notification.NewAdminHandler(adminEmailSvc, guard.Require(admin.RoleSuperAdmin), adminID),
 		auth.NewHandler(authSvc, cfg.Security.CookieSecure),
 		user.NewHandler(userSvc, guard.Require(admin.RoleSuperAdmin)),
 		admin.NewHandler(adminSvc, guard, cfg.Security.CookieSecure),

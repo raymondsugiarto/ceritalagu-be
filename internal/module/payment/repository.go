@@ -129,6 +129,20 @@ func (r *GormRepository) CountPaid(ctx context.Context, userID string) (int64, e
 	return n, nil
 }
 
+// LatestPaidForSong returns the song's most recent paid order, or ErrNotFound.
+func (r *GormRepository) LatestPaidForSong(ctx context.Context, songID string) (Order, error) {
+	var m model
+	err := r.db.WithContext(ctx).Where("song_id = ? AND status = ?", songID, string(StatusPaid)).
+		Order("paid_at DESC").First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Order{}, ErrNotFound
+	}
+	if err != nil {
+		return Order{}, fmt.Errorf("select paid order of song %s: %w", songID, err)
+	}
+	return m.toOrder(), nil
+}
+
 func (r *GormRepository) first(ctx context.Context, where string, arg any) (Order, error) {
 	var m model
 	err := r.db.WithContext(ctx).Where(where, arg).First(&m).Error

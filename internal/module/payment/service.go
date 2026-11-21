@@ -16,6 +16,7 @@ import (
 
 	"github.com/yourorg/music-api/internal/apperror"
 	"github.com/yourorg/music-api/internal/module/guest"
+	"github.com/yourorg/music-api/internal/module/notification"
 	"github.com/yourorg/music-api/internal/module/payment/doku"
 	"github.com/yourorg/music-api/internal/module/pricing"
 	"github.com/yourorg/music-api/internal/module/song"
@@ -61,6 +62,14 @@ type Gateway interface {
 	VerifyNotification(h http.Header, target string, body []byte) bool
 }
 
+// Receipts emails the buyer once an order is paid (notification.ReceiptService). Optional.
+type Receipts interface {
+	PaymentSucceeded(ctx context.Context, o notification.PaidOrder) error
+}
+
+// receiptTimeout bounds the background send (Brevo retries included).
+const receiptTimeout = 2 * time.Minute
+
 // Settings are the payment rules from payment.yml. Prices come from Pricing.
 type Settings struct {
 	OrderTTL      time.Duration
@@ -70,20 +79,27 @@ type Settings struct {
 
 // Service holds the checkout rules.
 type Service struct {
-	repo    Repository
-	songs   Songs
-	users   Users
-	pricing Pricing
-	gateway Gateway
-	cfg     Settings
-	log     *slog.Logger
-	now     func() time.Time
+	repo     Repository
+	songs    Songs
+	users    Users
+	pricing  Pricing
+	gateway  Gateway
+	receipts Receipts
+	cfg      Settings
+	log      *slog.Logger
+	now      func() time.Time
 }
 
 // NewService builds the service. gateway may be nil: checkout then answers 503.
 func NewService(repo Repository, songs Songs, users Users, prices Pricing, gateway Gateway, cfg Settings, log *slog.Logger) *Service {
 	return &Service{repo: repo, songs: songs, users: users, pricing: prices, gateway: gateway, cfg: cfg, log: log,
 		now: func() time.Time { return time.Now().UTC() }}
+}
+
+// WithReceipts turns on the "payment succeeded" email. nil leaves it off.
+func (s *Service) WithReceipts(r Receipts) *Service {
+	s.receipts = r
+	return s
 }
 
 var errDisabled = apperror.Unavailable("Pembayaran belum tersedia. Silakan coba lagi nanti.", errors.New("payment gateway not configured")).WithReason(apperror.ReasonPaymentUnavailable)
@@ -351,7 +367,8 @@ func (s *Service) apply(ctx context.Context, o Order, st doku.StatusResult, from
 		if fromNotification {
 			payload = st.Raw
 		}
-		if _, err := s.repo.MarkPaid(ctx, o.ID, st.Channel, payload, now); err != nil {
+		changed, err := s.repo.MarkPaid(ctx, o.ID, st.Channel, payload, now)
+		if err != nil {
 			return o, apperror.Internal(err)
 		}
 		if o.Status != StatusPaid {
@@ -359,6 +376,11 @@ func (s *Service) apply(ctx context.Context, o Order, st doku.StatusResult, from
 		}
 		if err := s.fulfil(ctx, o, now); err != nil {
 			return o, err
+		}
+		// Only the call that flipped the order to paid sends the receipt: the notification and the
+		// status check both land here, and either may repeat.
+		if changed {
+			s.sendReceipt(ctx, o, st.Channel, now)
 		}
 	case doku.StatusFailed, doku.StatusExpired, doku.StatusTimeout:
 		if o.Status != StatusPending {
@@ -377,6 +399,56 @@ func (s *Service) apply(ctx context.Context, o Order, st doku.StatusResult, from
 		}
 	}
 	return o, nil
+}
+
+// sendReceipt emails the buyer in the background: a slow or failing mail provider must not hold
+// up (or fail) the DOKU notification or the customer's status check.
+func (s *Service) sendReceipt(ctx context.Context, o Order, channel string, paidAt time.Time) {
+	if s.receipts == nil {
+		return
+	}
+	o.PaymentMethod, o.PaidAt = channel, &paidAt
+	p := ToPaidOrder(o)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiptTimeout)
+		defer cancel()
+		if err := s.receipts.PaymentSucceeded(ctx, p); err != nil {
+			s.log.Error("payment receipt email failed", "order_id", o.ID, "err", err)
+		}
+	}()
+}
+
+// ToPaidOrder is what the receipt email needs from a paid order.
+func ToPaidOrder(o Order) notification.PaidOrder {
+	p := notification.PaidOrder{
+		OrderID: o.ID, InvoiceNumber: o.InvoiceNumber, UserID: o.UserID, SongID: o.SongID,
+		Amount: o.Amount, NormalPrice: o.NormalPrice, SalePrice: o.SalePrice,
+		VoucherCode: o.VoucherCode, VoucherDiscount: o.VoucherDiscount,
+		PaymentMethod: o.PaymentMethod,
+	}
+	if o.PaidAt != nil {
+		p.PaidAt = *o.PaidAt
+	}
+	return p
+}
+
+// PaidOrders finds a song's paid order for the admin "resend receipt" button (notification.PaidOrders).
+type PaidOrders struct {
+	Repo interface {
+		LatestPaidForSong(ctx context.Context, songID string) (Order, error)
+	}
+}
+
+// LatestPaid returns the song's latest paid order, or notification.ErrNoPaidOrder.
+func (p PaidOrders) LatestPaid(ctx context.Context, songID string) (notification.PaidOrder, error) {
+	o, err := p.Repo.LatestPaidForSong(ctx, songID)
+	if errors.Is(err, ErrNotFound) {
+		return notification.PaidOrder{}, notification.ErrNoPaidOrder
+	}
+	if err != nil {
+		return notification.PaidOrder{}, err
+	}
+	return ToPaidOrder(o), nil
 }
 
 // fulfil unlocks the song and moves the buyer to customer (first purchase) or repeat_customer.

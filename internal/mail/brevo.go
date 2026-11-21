@@ -78,7 +78,9 @@ func NewBrevo(cfg config.BrevoConfig) (*BrevoSender, error) {
 type brevoRequest struct {
 	Sender      brevoAddress      `json:"sender"`
 	To          []brevoAddress    `json:"to"`
-	Subject     string            `json:"subject"`
+	Subject     string            `json:"subject,omitempty"`
+	TemplateID  int64             `json:"templateId,omitempty"`
+	Params      map[string]any    `json:"params,omitempty"`
 	HTMLContent string            `json:"htmlContent,omitempty"`
 	TextContent string            `json:"textContent,omitempty"`
 	Attachment  []brevoAttachment `json:"attachment,omitempty"`
@@ -114,6 +116,11 @@ func (s *BrevoSender) build(m Message) ([]byte, error) {
 		Subject:     m.Subject,
 		HTMLContent: m.HTML,
 		TextContent: m.Text,
+	}
+	if m.TemplateID > 0 {
+		// The Brevo template supplies subject and body; sending them too would override it.
+		req.TemplateID, req.Params = m.TemplateID, m.Params
+		req.Subject, req.HTMLContent, req.TextContent = "", "", ""
 	}
 	if m.ReplyTo != "" {
 		req.ReplyTo = &brevoAddress{Name: m.ReplyToName, Email: m.ReplyTo}

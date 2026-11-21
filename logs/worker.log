@@ -121,3 +121,19 @@ time=2026-11-17T23:17:23.160+07:00 level=INFO msg="song job step" job_id=22ee4ff
 time=2026-11-17T23:18:27.248+07:00 level=INFO msg="song job step" job_id=22ee4ffe-8147-47b2-af67-628aff8332af step=processing_audio
 time=2026-11-17T23:18:27.666+07:00 level=INFO msg="preview cut" job_id=22ee4ffe-8147-47b2-af67-628aff8332af method=chorus_timestamps cut_sec=146.93543 duration_sec=337 words=255
 time=2026-11-17T23:18:29.415+07:00 level=INFO msg="song job completed" job_id=22ee4ffe-8147-47b2-af67-628aff8332af song_id=b1fe4488-92d9-4549-8970-68d523be6656 total_ms=132621
+redis: 2026/11/20 20:07:06 pubsub.go:171: redis: discarding bad PubSub connection: EOF
+time=2026-11-20T20:07:06.858+07:00 level=ERROR msg="Failed to delete expired completed tasks from queue \"generation\": INTERNAL_ERROR: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:07.614+07:00 level=ERROR msg="Dequeue error: UNKNOWN: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:08.613+07:00 level=ERROR msg="Failed to write server state data: UNKNOWN: redis command error: SADD failed: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:13.587+07:00 level=ERROR msg="Dequeue error: UNKNOWN: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:13.649+07:00 level=ERROR msg="Failed to forward scheduled tasks: INTERNAL_ERROR: INTERNAL_ERROR: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:13.713+07:00 level=ERROR msg="Failed to write server state data: UNKNOWN: redis command error: SADD failed: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:14.976+07:00 level=ERROR msg="Failed to delete expired completed tasks from queue \"generation\": INTERNAL_ERROR: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:16.611+07:00 level=ERROR msg="Dequeue error: UNKNOWN: redis eval error: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:17.103+07:00 level=INFO msg="shutdown signal received, waiting for running jobs"
+time=2026-11-20T20:07:17.104+07:00 level=INFO msg="Starting graceful shutdown" component=asynq
+time=2026-11-20T20:07:17.172+07:00 level=INFO msg="Waiting for all workers to finish..." component=asynq
+time=2026-11-20T20:07:17.172+07:00 level=INFO msg="All workers have finished" component=asynq
+time=2026-11-20T20:07:17.229+07:00 level=ERROR msg="Failed to clear server state: INTERNAL_ERROR: redis command error: ZREM failed: dial tcp [::1]:6379: connect: connection refused" component=asynq
+time=2026-11-20T20:07:17.230+07:00 level=INFO msg=Exiting component=asynq
+time=2026-11-20T20:07:17.231+07:00 level=INFO msg="worker stopped cleanly"

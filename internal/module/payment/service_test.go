@@ -12,6 +12,7 @@ import (
 
 	"github.com/yourorg/music-api/internal/apperror"
 	"github.com/yourorg/music-api/internal/module/guest"
+	"github.com/yourorg/music-api/internal/module/notification"
 	"github.com/yourorg/music-api/internal/module/payment/doku"
 	"github.com/yourorg/music-api/internal/module/pricing"
 	"github.com/yourorg/music-api/internal/module/song"
@@ -463,5 +464,42 @@ func TestUnknownVoucherRejected(t *testing.T) {
 	}
 	if f.gw.created != 0 {
 		t.Fatal("gateway called for a bad voucher")
+	}
+}
+
+type fakeReceipts struct{ sent chan notification.PaidOrder }
+
+func (f fakeReceipts) PaymentSucceeded(_ context.Context, o notification.PaidOrder) error {
+	f.sent <- o
+	return nil
+}
+
+func TestPaidOrderSendsReceiptOnce(t *testing.T) {
+	f := newFixture(t)
+	rc := fakeReceipts{sent: make(chan notification.PaidOrder, 4)}
+	f.svc.WithReceipts(rc)
+	ctx := context.Background()
+	co, err := f.svc.Checkout(ctx, f.v, "s1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.gw.status = doku.StatusSuccess
+	for range 2 { // the customer's status check, then a repeat (or a late notification)
+		if _, err := f.svc.GetOrder(ctx, f.v, co.OrderID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case p := <-rc.sent:
+		if p.OrderID != co.OrderID || p.UserID != "u1" || p.SongID != "s1" || p.Amount != 49000 || p.PaymentMethod != "QRIS" {
+			t.Fatalf("receipt = %+v", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no receipt sent")
+	}
+	select {
+	case p := <-rc.sent:
+		t.Fatalf("receipt sent twice: %+v", p)
+	case <-time.After(100 * time.Millisecond):
 	}
 }

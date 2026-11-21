@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yourorg/music-api/internal/apperror"
+	"github.com/yourorg/music-api/internal/inputguard"
 	"github.com/yourorg/music-api/internal/mail"
 	"github.com/yourorg/music-api/internal/module/guest"
 )
@@ -34,6 +35,15 @@ func (s *Service) Send(ctx context.Context, v guest.Visitor, in SendContactInput
 	}
 	if len(in.Name) < 2 || len(in.Message) < 10 {
 		return SendContactOutput{}, apperror.BadRequest("Nama dan pesan wajib diisi.").WithReason(apperror.ReasonContactFieldsMissing)
+	}
+	// Messages go to a person, not to the AI, so a question about the technology is allowed here;
+	// commands, injection payloads and harmful content are not.
+	for field, value := range map[string]string{"name": in.Name, "message": in.Message} {
+		if viol, bad := inputguard.Check(value); bad && viol.Category != inputguard.CategoryAIProbe {
+			s.log.Warn("contact input rejected", "field", field, "category", viol.Category, "match", viol.Match, "ip_hash", v.IPHash)
+			return SendContactOutput{}, apperror.Validation([]apperror.ErrorDetail{{Field: field,
+				Message: "Pesan ini berisi hal yang tidak bisa kami proses.", Reason: apperror.ReasonInputNotAllowed}})
+		}
 	}
 
 	m := Message{Name: in.Name, Email: in.Email, Topic: in.Topic, Body: in.Message,

@@ -25,6 +25,12 @@ type Message struct {
 	// ReplyTo, when set, is where the recipient's "Reply" goes (e.g. the customer who used the contact form).
 	ReplyTo     string
 	ReplyToName string
+	// TemplateID, when > 0, sends a template stored in Brevo (Marketing → Templates) instead of
+	// Subject/Text/HTML: the template owns the subject and the body, filled from Params
+	// ({{ params.KEY }} in the template). Drivers without templates fall back to Subject/Text/HTML,
+	// so callers should still fill those.
+	TemplateID int64
+	Params     map[string]any
 }
 
 // Sender delivers a message.
@@ -53,6 +59,7 @@ func (s LogSender) Send(_ context.Context, m Message) error {
 	for _, f := range m.Files {
 		names = append(names, fmt.Sprintf("%s (%d bytes)", f.Name, len(f.Content)))
 	}
-	s.log.Warn("mail driver is log: email NOT sent", "to", m.To, "reply_to", m.ReplyTo, "subject", m.Subject, "body", m.Text, "attachments", names)
+	s.log.Warn("mail driver is log: email NOT sent", "to", m.To, "reply_to", m.ReplyTo, "subject", m.Subject, "body", m.Text,
+		"template_id", m.TemplateID, "params", m.Params, "attachments", names)
 	return nil
 }

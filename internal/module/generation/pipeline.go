@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/yourorg/music-api/internal/inputguard"
 	"github.com/yourorg/music-api/internal/module/aiprovider"
 	"github.com/yourorg/music-api/internal/module/prompt"
 	"github.com/yourorg/music-api/internal/module/questionnaire"
@@ -184,6 +185,12 @@ func (p *Pipeline) lyricsStyle(ctx context.Context, job *song.Job, a questionnai
 		res, callErr = adapter.GenerateLyricsStyle(ctx, aiprovider.LyricsStyleRequest{SystemPrompt: system, UserPrompt: user}, prov.Config)
 		if callErr != nil {
 			return callErr
+		}
+		// Never ship a title or lyrics that leak the technology behind the product or carry harmful
+		// content (e.g. a prompt injection that slipped past inputguard); reject and retry.
+		if viol, bad := inputguard.CheckOutput(res.Title + "\n" + res.Lyrics); bad {
+			return &aiprovider.Error{Kind: aiprovider.KindInvalidOutput, Provider: string(prov.AdapterType),
+				Message: fmt.Sprintf("lyrics failed safety check (%s near %q)", viol.Category, viol.Match)}
 		}
 		// The model sometimes drifts into another language or script mid-song; reject and retry.
 		return aiprovider.CheckLyricsLanguage(string(prov.AdapterType), res.Lyrics, lyricsLang(a.Language))

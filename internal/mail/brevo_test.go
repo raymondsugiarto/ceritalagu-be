@@ -218,3 +218,38 @@ func TestBrevoSetsReplyTo(t *testing.T) {
 		t.Errorf("replyTo = %#v", got.Body["replyTo"])
 	}
 }
+
+func TestBrevoSendsTemplateWithParams(t *testing.T) {
+	t.Parallel()
+	var got capturedRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &got.Body)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	err := newBrevo(t, srv.URL, false).Send(context.Background(), mail.Message{
+		To:         "customer@example.com",
+		Subject:    "fallback subject",
+		Text:       "fallback text",
+		HTML:       "<p>fallback</p>",
+		TemplateID: 7,
+		Params:     map[string]any{"SONG_TITLE": "Untuk Nadia"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Body["templateId"] != float64(7) {
+		t.Errorf("templateId = %v", got.Body["templateId"])
+	}
+	params, _ := got.Body["params"].(map[string]any)
+	if params["SONG_TITLE"] != "Untuk Nadia" {
+		t.Errorf("params = %v", got.Body["params"])
+	}
+	for _, k := range []string{"subject", "htmlContent", "textContent"} {
+		if _, ok := got.Body[k]; ok {
+			t.Errorf("%s must be left to the template, got %v", k, got.Body[k])
+		}
+	}
+}
