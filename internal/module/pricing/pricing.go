@@ -39,9 +39,21 @@ type Voucher struct {
 	Quota          int
 	ExpiresAt      time.Time
 	IsActive       bool
+	IsPublic       bool  // promoted on the public site (the landing banner)
 	Used           int64 // live orders using it (filled by List only)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+// Promo is the voucher promoted to the public site, with the discount it really gives: the quote
+// clamps a large voucher so the total never drops below the minimum payable.
+type Promo struct {
+	Code           string
+	DiscountAmount int64
+	Total          int64
+	NormalPrice    int64
+	SalePrice      int64
+	ExpiresAt      time.Time
 }
 
 // Quote applies v (may be nil) to p: the discount actually given and the total to charge. The total
@@ -59,6 +71,8 @@ type Store interface {
 	GetPrices(ctx context.Context) (Prices, error) // ErrNotFound when never saved
 	SavePrices(ctx context.Context, p Prices, at time.Time) error
 	ListVouchers(ctx context.Context, now time.Time) ([]Voucher, error)
+	// ListPublicVouchers returns the promoted live vouchers with their usage at now.
+	ListPublicVouchers(ctx context.Context, now time.Time) ([]Voucher, error)
 	GetVoucher(ctx context.Context, id string) (Voucher, error)
 	VoucherByCode(ctx context.Context, code string) (Voucher, error)
 	CreateVoucher(ctx context.Context, v Voucher) error

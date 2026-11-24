@@ -30,6 +30,7 @@ type voucherRow struct {
 	Quota          int            `gorm:"column:quota"`
 	ExpiresAt      time.Time      `gorm:"column:expires_at"`
 	IsActive       bool           `gorm:"column:is_active"`
+	IsPublic       bool           `gorm:"column:is_public"`
 	Used           int64          `gorm:"column:used;->"` // read-only: computed in ListVouchers
 	CreatedAt      time.Time      `gorm:"column:created_at"`
 	UpdatedAt      time.Time      `gorm:"column:updated_at"`
@@ -104,6 +105,21 @@ func (r *GormRepository) ListVouchers(ctx context.Context, now time.Time) ([]Vou
 	return out, nil
 }
 
+// ListPublicVouchers returns the promoted live vouchers, newest first, with their usage at now.
+func (r *GormRepository) ListPublicVouchers(ctx context.Context, now time.Time) ([]Voucher, error) {
+	var rows []voucherRow
+	if err := r.db.WithContext(ctx).Model(&voucherRow{}).Select("voucher.*, "+usedExpr, now).
+		Where("voucher.is_public = ?", true).
+		Order("created_at DESC").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("select public vouchers: %w", err)
+	}
+	out := make([]Voucher, len(rows))
+	for i, m := range rows {
+		out[i] = m.toVoucher()
+	}
+	return out, nil
+}
+
 // GetVoucher returns ErrNotFound when id is unknown or archived.
 func (r *GormRepository) GetVoucher(ctx context.Context, id string) (Voucher, error) {
 	return r.first(ctx, "id = ?", id)
@@ -126,7 +142,7 @@ func (r *GormRepository) CreateVoucher(ctx context.Context, v Voucher) error {
 func (r *GormRepository) UpdateVoucher(ctx context.Context, v Voucher) error {
 	res := r.db.WithContext(ctx).Model(&voucherRow{}).Where("id = ?", v.ID).Updates(map[string]any{
 		"discount_amount": v.DiscountAmount, "quota": v.Quota, "expires_at": v.ExpiresAt,
-		"is_active": v.IsActive, "updated_at": v.UpdatedAt,
+		"is_active": v.IsActive, "is_public": v.IsPublic, "updated_at": v.UpdatedAt,
 	})
 	if res.Error != nil {
 		return fmt.Errorf("update voucher %s: %w", v.ID, res.Error)
@@ -164,12 +180,14 @@ func (r *GormRepository) first(ctx context.Context, where string, arg any) (Vouc
 
 func fromVoucher(v Voucher) *voucherRow {
 	return &voucherRow{ID: v.ID, Code: v.Code, DiscountAmount: v.DiscountAmount, Quota: v.Quota,
-		ExpiresAt: v.ExpiresAt, IsActive: v.IsActive, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+		ExpiresAt: v.ExpiresAt, IsActive: v.IsActive, IsPublic: v.IsPublic,
+		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 
 func (m voucherRow) toVoucher() Voucher {
 	return Voucher{ID: m.ID, Code: m.Code, DiscountAmount: m.DiscountAmount, Quota: m.Quota,
-		ExpiresAt: m.ExpiresAt, IsActive: m.IsActive, Used: m.Used, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+		ExpiresAt: m.ExpiresAt, IsActive: m.IsActive, IsPublic: m.IsPublic, Used: m.Used,
+		CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
 }
 
 var _ Store = (*GormRepository)(nil)

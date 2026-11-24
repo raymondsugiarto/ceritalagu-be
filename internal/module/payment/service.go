@@ -41,6 +41,8 @@ type Repository interface {
 type Pricing interface {
 	Prices(ctx context.Context) (pricing.Prices, error)
 	UsableVoucher(ctx context.Context, code string, now time.Time) (pricing.Voucher, error)
+	// PublicPromo is the voucher promoted on the landing banner; ErrNotFound when there is none.
+	PublicPromo(ctx context.Context) (pricing.PublicVoucherOutput, error)
 }
 
 // Songs reads and unlocks songs (song.Service).
@@ -110,8 +112,23 @@ func (s *Service) Pricing(ctx context.Context) (PricingOutput, error) {
 	if err != nil {
 		return PricingOutput{}, err
 	}
-	return PricingOutput{UnlockPrice: p.Sale, NormalPrice: p.Normal, SalePrice: p.Sale, Currency: "IDR",
-		Enabled: s.gateway != nil}, nil
+	out := PricingOutput{UnlockPrice: p.Sale, NormalPrice: p.Normal, SalePrice: p.Sale, Currency: "IDR",
+		Enabled: s.gateway != nil}
+	// The landing banner shows the promoted voucher; no promo is not an error.
+	if promo, err := s.pricing.PublicPromo(ctx); err == nil {
+		out.Promo = &PromoOutput{Code: promo.Code, DiscountAmount: promo.DiscountAmount, Total: promo.Total,
+			NormalPrice: promo.NormalPrice, SalePrice: promo.SalePrice, Currency: promo.Currency,
+			ExpiresAt: promo.ExpiresAt}
+	} else if !isNotFound(err) {
+		return PricingOutput{}, err
+	}
+	return out, nil
+}
+
+// isNotFound reports whether err is the "no promo" case (nothing promoted or nothing usable).
+func isNotFound(err error) bool {
+	var ae *apperror.Error
+	return errors.As(err, &ae) && ae.Code == apperror.CodeNotFound
 }
 
 // quote is what a checkout of the visitor's song would charge.

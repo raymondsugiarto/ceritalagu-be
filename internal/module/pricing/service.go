@@ -78,6 +78,41 @@ func (s *Service) UpdatePrices(ctx context.Context, actorID string, in UpdatePri
 	return toPricesOutput(p), nil
 }
 
+// PublicPromo returns the promoted voucher a customer may use right now, with the discount it
+// really gives. It returns ErrNotFound when no promoted voucher is usable (none promoted, all
+// expired, inactive or out of quota), so the caller can hide the banner.
+func (s *Service) PublicPromo(ctx context.Context) (PublicVoucherOutput, error) {
+	now := s.now()
+	vs, err := s.store.ListPublicVouchers(ctx, now)
+	if err != nil {
+		return PublicVoucherOutput{}, apperror.Internal(err)
+	}
+	p, err := s.Prices(ctx)
+	if err != nil {
+		return PublicVoucherOutput{}, err
+	}
+	var best Promo
+	found := false
+	for _, v := range vs {
+		if !v.IsActive || !now.Before(v.ExpiresAt) || v.Used >= int64(v.Quota) {
+			continue
+		}
+		discount, total := Quote(p, &v)
+		if discount <= 0 {
+			continue
+		}
+		if !found || discount > best.DiscountAmount {
+			best, found = Promo{Code: v.Code, DiscountAmount: discount, Total: total,
+				NormalPrice: p.Normal, SalePrice: p.Sale, ExpiresAt: v.ExpiresAt}, true
+		}
+	}
+	if !found {
+		return PublicVoucherOutput{}, apperror.NotFound("Tidak ada voucher promo yang aktif.")
+	}
+	return PublicVoucherOutput{Code: best.Code, DiscountAmount: best.DiscountAmount, Total: best.Total,
+		NormalPrice: best.NormalPrice, SalePrice: best.SalePrice, Currency: "IDR", ExpiresAt: best.ExpiresAt}, nil
+}
+
 // ListVouchers returns every live voucher with its usage.
 func (s *Service) ListVouchers(ctx context.Context) ([]VoucherOutput, error) {
 	now := s.now()
@@ -100,7 +135,8 @@ func (s *Service) CreateVoucher(ctx context.Context, actorID string, in CreateVo
 		return VoucherOutput{}, fieldErr("code", "3-30 karakter: huruf, angka, - atau _ (mis. HEMAT10)")
 	}
 	v := Voucher{ID: uuid.NewString(), Code: code, DiscountAmount: in.DiscountAmount, Quota: in.Quota,
-		ExpiresAt: in.ExpiresAt.UTC(), IsActive: in.IsActive == nil || *in.IsActive, CreatedAt: now, UpdatedAt: now}
+		ExpiresAt: in.ExpiresAt.UTC(), IsActive: in.IsActive == nil || *in.IsActive,
+		IsPublic: in.IsPublic != nil && *in.IsPublic, CreatedAt: now, UpdatedAt: now}
 	if err := validateVoucher(v, now); err != nil {
 		return VoucherOutput{}, err
 	}
@@ -113,7 +149,8 @@ func (s *Service) CreateVoucher(ctx context.Context, actorID string, in CreateVo
 		return VoucherOutput{}, apperror.Internal(err)
 	}
 	s.record(ctx, actorID, "voucher.create", "voucher", v.ID, map[string]any{
-		"code": v.Code, "discount_amount": v.DiscountAmount, "quota": v.Quota, "expires_at": v.ExpiresAt, "is_active": v.IsActive})
+		"code": v.Code, "discount_amount": v.DiscountAmount, "quota": v.Quota,
+		"expires_at": v.ExpiresAt, "is_active": v.IsActive, "is_public": v.IsPublic})
 	return toVoucherOutput(v, now), nil
 }
 
@@ -136,6 +173,9 @@ func (s *Service) UpdateVoucher(ctx context.Context, actorID, id string, in Upda
 	}
 	if in.IsActive != nil && *in.IsActive != v.IsActive {
 		v.IsActive, changed["is_active"] = *in.IsActive, *in.IsActive
+	}
+	if in.IsPublic != nil && *in.IsPublic != v.IsPublic {
+		v.IsPublic, changed["is_public"] = *in.IsPublic, *in.IsPublic
 	}
 	if len(changed) == 0 {
 		return toVoucherOutput(v, now), nil

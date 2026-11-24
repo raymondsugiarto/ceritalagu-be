@@ -24,6 +24,7 @@ type CreateVoucherInput struct {
 	Quota          int       `json:"quota"`
 	ExpiresAt      time.Time `json:"expires_at"`
 	IsActive       *bool     `json:"is_active"` // default true
+	IsPublic       *bool     `json:"is_public"` // default false: shown on the public landing banner
 }
 
 // UpdateVoucherInput changes only the fields that are set.
@@ -32,6 +33,7 @@ type UpdateVoucherInput struct {
 	Quota          *int       `json:"quota"`
 	ExpiresAt      *time.Time `json:"expires_at"`
 	IsActive       *bool      `json:"is_active"`
+	IsPublic       *bool      `json:"is_public"`
 }
 
 // VoucherStatus is how the admin list labels a voucher.
@@ -55,9 +57,22 @@ type VoucherOutput struct {
 	Remaining      int64         `json:"remaining"`
 	ExpiresAt      time.Time     `json:"expires_at"`
 	IsActive       bool          `json:"is_active"`
+	IsPublic       bool          `json:"is_public"`
 	Status         VoucherStatus `json:"status"`
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
+}
+
+// PublicVoucherOutput is the promoted voucher a customer may use right now, with the discount it
+// really gives. The landing banner shows it so the advertised code always works.
+type PublicVoucherOutput struct {
+	Code           string    `json:"code"`
+	DiscountAmount int64     `json:"discount_amount"`
+	Total          int64     `json:"total"`
+	NormalPrice    int64     `json:"normal_price"`
+	SalePrice      int64     `json:"sale_price"`
+	Currency       string    `json:"currency"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 func toPricesOutput(p Prices) PricesOutput {
@@ -75,6 +90,6 @@ func toVoucherOutput(v Voucher, now time.Time) VoucherOutput {
 		st = VoucherExhausted
 	}
 	return VoucherOutput{ID: v.ID, Code: v.Code, DiscountAmount: v.DiscountAmount, Quota: v.Quota, Used: v.Used,
-		Remaining: max(int64(v.Quota)-v.Used, 0), ExpiresAt: v.ExpiresAt, IsActive: v.IsActive, Status: st,
-		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+		Remaining: max(int64(v.Quota)-v.Used, 0), ExpiresAt: v.ExpiresAt, IsActive: v.IsActive,
+		IsPublic: v.IsPublic, Status: st, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }

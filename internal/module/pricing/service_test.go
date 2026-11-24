@@ -37,6 +37,17 @@ func (m *memStore) ListVouchers(context.Context, time.Time) ([]Voucher, error) {
 	}
 	return out, nil
 }
+func (m *memStore) ListPublicVouchers(context.Context, time.Time) ([]Voucher, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Voucher, 0, len(m.vouchers))
+	for _, v := range m.vouchers {
+		if v.IsPublic {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
 func (m *memStore) GetVoucher(_ context.Context, id string) (Voucher, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -184,5 +195,75 @@ func TestUsableVoucherRejectsExpiredInactiveUnknown(t *testing.T) {
 		if _, err := s.UsableVoucher(ctx, code, now); status(err) != http.StatusBadRequest {
 			t.Fatalf("%q err = %v, want 400", code, err)
 		}
+	}
+}
+
+func TestPublicPromoSkipsUnusableVouchers(t *testing.T) {
+	s, st := newSvc()
+	ctx := context.Background()
+	if _, err := s.UpdatePrices(ctx, "a1", UpdatePricesInput{NormalPrice: 99000, SalePrice: 49000, MinPayable: 10000}); err != nil {
+		t.Fatal(err)
+	}
+	st.vouchers["good"] = Voucher{ID: "good", Code: "GOOD", DiscountAmount: 10000, Quota: 5,
+		ExpiresAt: now.Add(time.Hour), IsActive: true, IsPublic: true}
+	st.vouchers["expired"] = Voucher{ID: "expired", Code: "EXPIRED", DiscountAmount: 20000, Quota: 5,
+		ExpiresAt: now.Add(-time.Hour), IsActive: true, IsPublic: true}
+	st.vouchers["inactive"] = Voucher{ID: "inactive", Code: "INACTIVE", DiscountAmount: 30000, Quota: 5,
+		ExpiresAt: now.Add(time.Hour), IsActive: false, IsPublic: true}
+	st.vouchers["usedup"] = Voucher{ID: "usedup", Code: "USEDUP", DiscountAmount: 40000, Quota: 1, Used: 1,
+		ExpiresAt: now.Add(time.Hour), IsActive: true, IsPublic: true}
+	st.vouchers["private"] = Voucher{ID: "private", Code: "PRIVATE", DiscountAmount: 50000, Quota: 5,
+		ExpiresAt: now.Add(time.Hour), IsActive: true}
+
+	out, err := s.PublicPromo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Code != "GOOD" {
+		t.Fatalf("promo code = %q, want GOOD", out.Code)
+	}
+	if out.DiscountAmount != 10000 || out.Total != 39000 {
+		t.Fatalf("promo = %+v", out)
+	}
+	if out.NormalPrice != 99000 || out.SalePrice != 49000 || out.Currency != "IDR" {
+		t.Fatalf("promo prices = %+v", out)
+	}
+}
+
+func TestPublicPromoWithoutUsableVoucher(t *testing.T) {
+	s, st := newSvc()
+	ctx := context.Background()
+	if _, err := s.PublicPromo(ctx); status(err) != http.StatusNotFound {
+		t.Fatalf("err = %v, want 404", err)
+	}
+	st.vouchers["private"] = Voucher{ID: "private", Code: "PRIVATE", DiscountAmount: 5000, Quota: 5,
+		ExpiresAt: now.Add(time.Hour), IsActive: true}
+	if _, err := s.PublicPromo(ctx); status(err) != http.StatusNotFound {
+		t.Fatalf("err = %v, want 404", err)
+	}
+}
+
+func TestVoucherIsPublicFlagRoundTrips(t *testing.T) {
+	s, st := newSvc()
+	ctx := context.Background()
+	yes := true
+	out, err := s.CreateVoucher(ctx, "a1", CreateVoucherInput{Code: "PROMO1", DiscountAmount: 5000, Quota: 5,
+		ExpiresAt: now.Add(48 * time.Hour), IsPublic: &yes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.IsPublic {
+		t.Fatalf("out = %+v, want is_public", out)
+	}
+	if v := st.vouchers[out.ID]; !v.IsPublic {
+		t.Fatalf("stored voucher = %+v", v)
+	}
+	no := false
+	out, err = s.UpdateVoucher(ctx, "a1", out.ID, UpdateVoucherInput{IsPublic: &no})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.IsPublic {
+		t.Fatalf("out = %+v, want is_public off", out)
 	}
 }

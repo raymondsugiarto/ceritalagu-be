@@ -138,6 +138,9 @@ func (f *fakePricing) UsableVoucher(_ context.Context, code string, _ time.Time)
 	}
 	return v, nil
 }
+func (f *fakePricing) PublicPromo(context.Context) (pricing.PublicVoucherOutput, error) {
+	return pricing.PublicVoucherOutput{}, apperror.NotFound("Tidak ada voucher promo yang aktif.")
+}
 
 type fakeSongs map[string]song.Song
 

@@ -19,6 +19,19 @@ type PricingOutput struct {
 	SalePrice   int64  `json:"sale_price"`   // what is charged without a voucher
 	Currency    string `json:"currency"`
 	Enabled     bool   `json:"enabled"` // false until DOKU credentials are configured
+	// Promo is the voucher the landing banner advertises; absent when there is none to use.
+	Promo *PromoOutput `json:"promo,omitempty"`
+}
+
+// PromoOutput is the voucher promoted on the public site, with the discount it really gives.
+type PromoOutput struct {
+	Code           string    `json:"code"`
+	DiscountAmount int64     `json:"discount_amount"`
+	Total          int64     `json:"total"` // what the customer pays with this voucher
+	NormalPrice    int64     `json:"normal_price"`
+	SalePrice      int64     `json:"sale_price"`
+	Currency       string    `json:"currency"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 // VoucherInput is the optional body of checkout and voucher-check.
